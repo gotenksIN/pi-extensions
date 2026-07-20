@@ -82,6 +82,7 @@ const DEFAULT_CONFIG: SandboxConfig = {
     ":project/.env": "read",
     "~/sandbox": "write",
     "~/.config": "read",
+    "~/.gitconfig": "read",
     "~/.pi": "read",
   },
   extraWritePaths: [],
