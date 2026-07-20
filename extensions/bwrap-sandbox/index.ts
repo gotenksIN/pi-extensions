@@ -66,6 +66,17 @@ interface ApprovedMount {
   writable: boolean;
 }
 
+interface BashPathRequest {
+  path: string;
+  access: "read" | "write";
+}
+
+interface PendingBashMount {
+  requestedPath: string;
+  mountPath: string;
+  access: "read" | "write";
+}
+
 interface SessionFileGrants {
   read: string[];
   write: string[];
@@ -270,28 +281,124 @@ function filesystemRootsWithAccess(config: SandboxConfig, predicate: (access: Fi
     .map(([path]) => path);
 }
 
-/** Best-effort extraction for approval UX; bwrap remains the security boundary. */
-function extractPathsFromCommand(command: string): string[] {
-  const paths: string[] = [];
-  const tokenPattern = /(?:^|\s)(?:"([^"]*)"|'([^']*)'|([^\s"';&|`$()<>]+))/g;
+/** Best-effort shell tokenization for approval UX; bwrap remains the security boundary. */
+function shellTokens(command: string): string[] {
+  const tokens: string[] = [];
+  const pattern = /"((?:\\.|[^"\\])*)"|'([^']*)'|(2>>|2>|&>>|&>|>>|>|<|;|&&|\|\||\||[^\s"';&|`$()<>]+)/g;
   let match: RegExpExecArray | null;
+  while ((match = pattern.exec(command)) !== null) {
+    tokens.push(match[1] ?? match[2] ?? match[3]);
+  }
+  return tokens;
+}
 
-  while ((match = tokenPattern.exec(command)) !== null) {
-    const token = match[1] ?? match[2] ?? match[3];
-    if (!token) continue;
+function isShellSeparator(token: string): boolean {
+  return token === ";" || token === "&&" || token === "||" || token === "|";
+}
 
-    const candidate = token.replace(/[,;:]$/, "");
-    if (
-      candidate.startsWith("/") ||
-      candidate.startsWith("./") ||
-      candidate.startsWith("../") ||
-      candidate.startsWith("~/")
-    ) {
-      paths.push(candidate);
-    }
+function isWriteRedirect(token: string): boolean {
+  return token === ">" || token === ">>" || token === "2>" || token === "2>>" || token === "&>" || token === "&>>";
+}
+
+function isPathLike(token: string): boolean {
+  return token.startsWith("/") || token.startsWith("./") || token.startsWith("../") || token.startsWith("~/");
+}
+
+function isOptionLike(token: string): boolean {
+  return token.startsWith("-") && token !== "-";
+}
+
+function stripPathPunctuation(token: string): string {
+  return token.replace(/[,;:]$/, "");
+}
+
+function addPathRequest(requests: Map<string, "read" | "write">, path: string, access: "read" | "write"): void {
+  const cleaned = stripPathPunctuation(path);
+  if (!cleaned || cleaned === "-" || isShellSeparator(cleaned)) return;
+  const previous = requests.get(cleaned);
+  requests.set(cleaned, previous === "write" || access === "write" ? "write" : "read");
+}
+
+function commandName(segment: string[]): { name: string; index: number } | undefined {
+  for (let index = 0; index < segment.length; index++) {
+    const token = segment[index];
+    if (!token || isOptionLike(token) || token.includes("=")) continue;
+    if (token === "env" || token === "sudo" || token === "command") continue;
+    return { name: token.split("/").pop() ?? token, index };
+  }
+  return undefined;
+}
+
+function operands(segment: string[], start: number): string[] {
+  return segment.slice(start).filter((token) => token && !isOptionLike(token) && !isWriteRedirect(token) && token !== "<");
+}
+
+function addCommandSpecificRequests(requests: Map<string, "read" | "write">, segment: string[]): void {
+  const command = commandName(segment);
+  if (!command) return;
+
+  const name = command.name;
+  const args = operands(segment, command.index + 1);
+  const addAll = (access: "read" | "write", values = args) => values.forEach((arg) => addPathRequest(requests, arg, access));
+
+  if (["touch", "mkdir", "rm", "rmdir", "truncate", "tee"].includes(name)) {
+    addAll("write");
+    return;
   }
 
-  return unique(paths);
+  if (["chmod", "chown", "chgrp"].includes(name)) {
+    addAll("write", args.slice(1));
+    return;
+  }
+
+  if (name === "cp" || name === "ln") {
+    if (args.length > 0) {
+      addAll("read", args.slice(0, -1));
+      addPathRequest(requests, args[args.length - 1], "write");
+    }
+    return;
+  }
+
+  if (name === "mv") {
+    addAll("write");
+    return;
+  }
+
+  if (["cat", "head", "tail", "wc", "ls", "stat", "file", "readlink", "realpath"].includes(name)) {
+    addAll("read");
+    return;
+  }
+
+  for (const arg of args) {
+    if (isPathLike(arg)) addPathRequest(requests, arg, "read");
+  }
+}
+
+/** Best-effort extraction for approval UX; bwrap remains the security boundary. */
+function extractPathRequestsFromCommand(command: string): BashPathRequest[] {
+  const tokens = shellTokens(command);
+  const requests = new Map<string, "read" | "write">();
+
+  for (let index = 0; index < tokens.length; index++) {
+    const token = tokens[index];
+    const next = tokens[index + 1];
+    if (!next) continue;
+    if (isWriteRedirect(token)) addPathRequest(requests, next, "write");
+    else if (token === "<") addPathRequest(requests, next, "read");
+  }
+
+  let segment: string[] = [];
+  for (const token of tokens) {
+    if (isShellSeparator(token)) {
+      addCommandSpecificRequests(requests, segment);
+      segment = [];
+    } else {
+      segment.push(token);
+    }
+  }
+  addCommandSpecificRequests(requests, segment);
+
+  return [...requests.entries()].map(([path, access]) => ({ path, access }));
 }
 
 function nearestExistingPath(path: string): string | undefined {
@@ -332,6 +439,41 @@ function mountsFromFileGrants(grants: SessionFileGrants): ApprovedMount[] {
   ];
 }
 
+function hasBashReadAccess(path: string, config: SandboxConfig, sessionMounts: ApprovedMount[]): boolean {
+  const policyAccess = filesystemAccess(path, config.filesystem);
+  return policyAccess === "read" ||
+    policyAccess === "write" ||
+    isPathWithinAny(path, [
+      ...config.systemPaths,
+      ...config.extraReadPaths,
+      ...config.extraWritePaths,
+      ...sessionMounts.map((mount) => mount.path),
+      ...BASH_INTERNAL_PATHS,
+    ]);
+}
+
+function hasBashWriteAccess(path: string, config: SandboxConfig, sessionMounts: ApprovedMount[]): boolean {
+  return filesystemAccess(path, config.filesystem) === "write" ||
+    isPathWithinAny(path, [
+      ...config.extraWritePaths,
+      ...sessionMounts.filter((mount) => mount.writable).map((mount) => mount.path),
+    ]);
+}
+
+function describeBashAccess(access: "read" | "write"): string {
+  return access === "write" ? "write" : "read-only";
+}
+
+function bashApprovalChoices(pending: PendingBashMount[]): string[] {
+  const hasRead = pending.some((mount) => mount.access === "read");
+  const hasWrite = pending.some((mount) => mount.access === "write");
+  if (hasRead && hasWrite) {
+    return ["No - block", "Yes - grant requested access once", "Yes - grant requested access for session"];
+  }
+  if (hasWrite) return ["No - block", "Yes - write once", "Yes - write for session"];
+  return ["No - block", "Yes - read-only once", "Yes - read-only for session"];
+}
+
 async function approveBashMounts(
   command: string,
   ctx: ExtensionContext,
@@ -339,73 +481,87 @@ async function approveBashMounts(
   config: SandboxConfig,
   sessionMounts: ApprovedMount[],
 ): Promise<ApprovedMount[]> {
-  const visible = [
-    ...filesystemRootsWithAccess(config, (access) => access !== "none"),
-    ...config.systemPaths,
-    ...config.extraReadPaths,
-    ...config.extraWritePaths,
-    ...sessionMounts.map((mount) => mount.path),
-    ...BASH_INTERNAL_PATHS,
-  ];
+  const pending = new Map<string, PendingBashMount>();
+  const denied: string[] = [];
+  const blockedOutside: string[] = [];
 
-  const outside = unique(
-    extractPathsFromCommand(command)
-      .map((path) => resolvePath(path, cwd))
-      .filter((path) => {
-        const access = filesystemAccess(path, config.filesystem);
-        return access === "none" || !isPathWithinAny(path, visible);
-      }),
-  );
+  for (const request of extractPathRequestsFromCommand(command)) {
+    const resolved = resolvePath(request.path, cwd);
+    const policyAccess = filesystemAccess(resolved, config.filesystem);
+    if (policyAccess === "none") {
+      denied.push(resolved);
+      continue;
+    }
 
-  if (outside.length === 0) return [...sessionMounts];
+    const alreadyAllowed = request.access === "write"
+      ? hasBashWriteAccess(resolved, config, sessionMounts)
+      : hasBashReadAccess(resolved, config, sessionMounts);
+    if (alreadyAllowed) continue;
 
-  const denied = outside.filter((path) => filesystemAccess(path, config.filesystem) === "none");
+    const outsideConfiguredRoots = policyAccess === undefined &&
+      !isPathWithinAny(resolved, [
+        ...config.systemPaths,
+        ...config.extraReadPaths,
+        ...config.extraWritePaths,
+        ...sessionMounts.map((mount) => mount.path),
+        ...BASH_INTERNAL_PATHS,
+      ]);
+    if (outsideConfiguredRoots && config.blockOutsideAccess) {
+      blockedOutside.push(resolved);
+      continue;
+    }
+
+    const mountPath = nearestExistingPath(resolved);
+    if (!mountPath) continue;
+
+    const previous = pending.get(mountPath);
+    pending.set(mountPath, {
+      requestedPath: previous
+        ? unique([previous.requestedPath, resolved]).join(", ")
+        : resolved,
+      mountPath,
+      access: previous?.access === "write" || request.access === "write" ? "write" : "read",
+    });
+  }
+
   if (denied.length > 0) {
     throw new Error(`Sandbox blocked denied paths:\n  ${denied.join("\n  ")}`);
   }
-
-  if (config.blockOutsideAccess) {
-    throw new Error(`Sandbox blocked paths outside configured roots:\n  ${outside.join("\n  ")}`);
+  if (blockedOutside.length > 0) {
+    throw new Error(`Sandbox blocked paths outside configured roots:\n  ${blockedOutside.join("\n  ")}`);
   }
 
-  const mountPaths = unique(
-    outside
-      .map(nearestExistingPath)
-      .filter((path): path is string => path !== undefined),
-  );
-  if (mountPaths.length === 0) {
-    throw new Error("Sandbox could not find an existing path to approve");
-  }
+  const required = [...pending.values()];
+  if (required.length === 0) return [...sessionMounts];
 
   if (isAutoApproved(command, config.autoApproveCommands)) {
-    return mergeApprovedMounts(sessionMounts, mountPaths.map((path) => ({ path, writable: true })));
+    return mergeApprovedMounts(
+      sessionMounts,
+      required.map((mount) => ({ path: mount.mountPath, writable: mount.access === "write" })),
+    );
   }
 
   if (!ctx.hasUI) {
-    throw new Error(`Sandbox blocked outside paths in non-interactive mode:\n  ${outside.join("\n  ")}`);
+    throw new Error(
+      `Sandbox blocked bash access in non-interactive mode:\n` +
+        required.map((mount) => `  ${mount.access}: ${mount.requestedPath}`).join("\n"),
+    );
   }
 
   const choice = await ctx.ui.select(
-    `🔒 Bash requests paths outside configured roots:\n\n` +
+    `🔒 Bash requests filesystem access:\n\n` +
       `Command: ${command.slice(0, 300)}${command.length > 300 ? "…" : ""}\n\n` +
-      `Requested:\n  ${outside.join("\n  ")}\n\n` +
-      `Mounts required:\n  ${mountPaths.join("\n  ")}\n\n` +
+      `Requested:\n${required.map((mount) => `  ${describeBashAccess(mount.access)}: ${mount.requestedPath}`).join("\n")}\n\n` +
+      `Mounts required:\n${required.map((mount) => `  ${describeBashAccess(mount.access)}: ${mount.mountPath}`).join("\n")}\n\n` +
       "Allow?",
-    [
-      "No - block",
-      "Yes - read-only once",
-      "Yes - read-write once",
-      "Yes - read-only for session",
-      "Yes - read-write for session",
-    ],
+    bashApprovalChoices(required),
   );
 
   if (!choice || choice.startsWith("No")) {
-    throw new Error(`Sandbox: outside access denied (${outside.join(", ")})`);
+    throw new Error(`Sandbox: bash access denied (${required.map((mount) => mount.requestedPath).join(", ")})`);
   }
 
-  const writable = choice.includes("read-write");
-  const mounts = mountPaths.map((path) => ({ path, writable }));
+  const mounts = required.map((mount) => ({ path: mount.mountPath, writable: mount.access === "write" }));
   if (choice.endsWith("for session")) {
     sessionMounts.splice(0, sessionMounts.length, ...mergeApprovedMounts(sessionMounts, mounts));
     return [...sessionMounts];
@@ -647,7 +803,7 @@ async function promptForFileGrant(
   const choice = await ctx.ui.select(
     `🔒 Allow ${policyRestricted ? "policy-restricted " : ""}${toolName}?\n\n` +
       `Path: ${originalPath}\nResolved: ${resolved}\n` +
-      `Access: ${readOnly ? "read-only" : "read-write"}`,
+      `Access: ${readOnly ? "read-only" : "write"}`,
     [
       "No - block",
       "Yes - allow once",
