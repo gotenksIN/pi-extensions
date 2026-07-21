@@ -13,7 +13,7 @@
  * More-specific paths override broader paths.
  */
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   accessSync,
   constants,
@@ -780,6 +780,44 @@ function pushSshAgentMount(args: string[], config: SandboxConfig, sshAuthSock: s
   args.push("--bind", sshAuthSock, sshAuthSock);
 }
 
+function gitMetadataPaths(cwd: string, config: SandboxConfig): string[] {
+  const result = spawnSync("git", ["-C", cwd, "rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir"], {
+    encoding: "utf8",
+    timeout: 2000,
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+  if (result.status !== 0 || !result.stdout.trim()) return [];
+
+  const paths = result.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .map((path) => resolvePath(path, cwd))
+    .filter((path) => existsSync(path))
+    .filter((path) => !isPathWithin(path, cwd))
+    .filter((path) => filesystemAccess(path, config.filesystem) !== "none");
+
+  return unique(paths);
+}
+
+function pushReadOnlyMountWithScaffold(args: string[], path: string, mountedRoots: string[]): void {
+  if (!existsSync(path)) return;
+  if (!isPathWithinAny(path, mountedRoots)) pushDirectoryScaffold(args, dirname(path));
+  args.push("--ro-bind", path, path);
+}
+
+function pushGitMetadataMounts(args: string[], cwd: string, config: SandboxConfig): void {
+  const mountedRoots = [
+    ...config.systemPaths,
+    ...config.extraReadPaths,
+    ...config.extraWritePaths,
+    ...Object.keys(config.filesystem),
+  ];
+  for (const path of gitMetadataPaths(cwd, config)) {
+    pushReadOnlyMountWithScaffold(args, path, mountedRoots);
+  }
+}
+
 function buildBwrapArgs(
   command: string,
   cwd: string,
@@ -802,6 +840,11 @@ function buildBwrapArgs(
 
   // Structured entries are applied broad-to-narrow so specific rules win.
   pushFilesystemPolicy(args, config.filesystem, () => pushSshAgentMount(args, config, sshAuthSock));
+
+  // Git worktrees can keep their actual git/common dirs outside the project.
+  // Mount those metadata dirs read-only after broad writable roots so git can
+  // inspect them without making hooks/config writable.
+  pushGitMetadataMounts(args, cwd, config);
 
   // Explicit one-time/session approval has final precedence.
   pushMounts(args, "--ro-bind", approvedMounts.filter((mount) => !mount.writable).map((mount) => mount.path));
@@ -1120,6 +1163,10 @@ export default function sandboxExtension(pi: ExtensionAPI) {
           command: "test -r /proc/self/status && grep -q '^NSpid:' /proc/self/status",
         },
         {
+          name: "git metadata readable",
+          command: "git rev-parse --git-dir >/dev/null",
+        },
+        {
           name: "private SSH keys absent",
           command: "test ! -e \"$HOME/.ssh/id_ed25519\" && test ! -e \"$HOME/.ssh/id_rsa\"",
         },
@@ -1157,6 +1204,7 @@ export default function sandboxExtension(pi: ExtensionAPI) {
     description: "Show sandbox status and configuration",
     handler: async (_args, ctx) => {
       const sshAuthSock = resolveSshAuthSock();
+      const gitMounts = gitMetadataPaths(projectCwd, config);
       const lines = [
         `Bubblewrap sandbox: ${state.toUpperCase()}`,
         `Reason: ${stateReason}`,
@@ -1173,6 +1221,8 @@ export default function sandboxExtension(pi: ExtensionAPI) {
         ...(config.extraWritePaths.length ? config.extraWritePaths.map((path) => `  • ${path}`) : ["  (none)"]),
         "System read paths:",
         ...config.systemPaths.map((path) => `  • ${path}`),
+        "Git metadata read paths:",
+        ...(gitMounts.length ? gitMounts.map((path) => `  • ${path}`) : ["  (none)"]),
         "Session grants:",
         ...(sessionFileGrants.read.length + sessionFileGrants.write.length + sessionBashMounts.length > 0
           ? [
