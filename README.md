@@ -15,13 +15,16 @@ A Linux `bubblewrap` sandbox extension for Pi bash and file tools.
   - `"write"`
 - Keeps a sparse host-read model instead of binding the full host filesystem.
 - Mounts protected project paths read-only by default, including `.git`, `.pi`, `.agents`, `.codex`, and `.env`.
+- Hides `.git/hooks` by default while keeping `.git/config` read-only.
 - Keeps common tool config under `~/.config` read-only by default.
 - Keeps Git user config under `~/.gitconfig` read-only by default.
 - Supports SSH/Git pushes via a mounted SSH agent socket without mounting private keys.
+- Mounts Git worktree/common-dir metadata read-only when it lives outside the project.
 - Keeps Pi config under `~/.pi` read-only by default.
 - Supports memory-only session grants for one-off file/bash access.
 - Network access is normal by default.
 - Optional paranoid network isolation via `isolateNetwork: true`.
+- Uses PID/user namespace isolation, a fresh `/proc`, and drops capabilities inside bwrap.
 
 ### Requirements
 
@@ -68,6 +71,8 @@ Example:
   "filesystem": {
     ":project": "write",
     ":project/.git": "read",
+    ":project/.git/config": "read",
+    ":project/.git/hooks": "none",
     ":project/.agents": "read",
     ":project/.codex": "read",
     ":project/.pi": "read",
@@ -111,7 +116,16 @@ is interpreted as:
 ```
 
 
-### SSH/Git pushes
+### Git and SSH
+
+The sandbox keeps Git metadata conservative by default:
+
+- `.git` is readable but not writable.
+- `.git/config` is explicitly read-only.
+- `.git/hooks` is hidden with a `none` policy entry.
+- Git worktree `git-dir` / `git-common-dir` paths outside the project are
+  mounted read-only so commands like `git status`, `git log`, and SSH-based
+  `git push` can inspect metadata without making hooks/config writable.
 
 The sandbox intentionally does **not** mount private SSH keys. Instead, when
 `sshAgent` is enabled, it mounts a live `SSH_AUTH_SOCK` socket read/write and
