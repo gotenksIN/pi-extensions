@@ -31,7 +31,15 @@ A Linux `bubblewrap` sandbox extension for Pi bash and file tools.
 Install `bubblewrap` and ensure `bwrap` is on `PATH`:
 
 ```bash
+# Debian / Ubuntu / other apt-based systems
+sudo apt update
 sudo apt install bubblewrap
+
+# Fedora / RHEL / other dnf-based systems
+sudo dnf install bubblewrap
+
+# Arch / Manjaro / other pacman-based systems
+sudo pacman -S bubblewrap
 ```
 
 ### Install
