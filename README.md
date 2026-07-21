@@ -141,3 +141,96 @@ Inside Pi:
 /sandbox
 /sandbox-test
 ```
+
+## websearch
+
+A provider-native grounded web search extension that registers the real Pi tool
+`websearch_cited`.
+
+### Features
+
+- Registers `websearch_cited` as a first-class Pi toolcall.
+- Uses provider-native web search/grounding where available:
+  - Google Gemini `googleSearch`
+  - OpenAI Responses API `web_search`
+  - OpenRouter Responses API `web` plugin
+- Returns inline numeric citations like `[1]` plus a final `Sources:` list.
+- Supports ordered model fallback. By default:
+  1. `google/gemini-3.5-flash`
+  2. `openai/gpt-5.5`
+  3. `openrouter/google/gemini-3.5-flash`
+- Allows per-call preferred backend via optional `provider` and `model` tool
+  parameters; configured fallbacks are tried after the requested backend.
+- Inherits auth, headers, and base URLs from Pi's model registry:
+  - `ctx.modelRegistry.find(provider, model)`
+  - `ctx.modelRegistry.getApiKeyAndHeaders(model)`
+  - `model.baseUrl`
+  - `auth.headers`
+  - `auth.env`
+- Does not duplicate API-key, OAuth, or base-URL configuration.
+
+### Install
+
+Copy the extension into Pi's global extension directory:
+
+```bash
+mkdir -p ~/.pi/agent/extensions/websearch
+cp extensions/websearch/index.ts ~/.pi/agent/extensions/websearch/index.ts
+```
+
+Then restart Pi or run:
+
+```text
+/reload
+```
+
+### Configuration
+
+Global config path:
+
+```text
+~/.pi/agent/extensions/websearch.json
+```
+
+Project config path:
+
+```text
+.pi/websearch.json
+```
+
+Example fallback config:
+
+```json
+{
+  "models": [
+    { "provider": "google", "model": "gemini-3.5-flash" },
+    { "provider": "openai", "model": "gpt-5.5" },
+    { "provider": "openrouter", "model": "google/gemini-3.5-flash" }
+  ]
+}
+```
+
+Compact string form is also supported:
+
+```json
+{
+  "models": [
+    "google/gemini-3.5-flash",
+    "openai/gpt-5.5",
+    "openrouter/google/gemini-3.5-flash"
+  ]
+}
+```
+
+### Tool parameters
+
+```json
+{
+  "query": "current search query",
+  "provider": "google",
+  "model": "gemini-3.5-flash"
+}
+```
+
+Only `query` is required. `provider` and `model` are optional and are tried
+first when supplied.
