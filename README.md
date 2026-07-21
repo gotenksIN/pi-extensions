@@ -309,16 +309,18 @@ Copy the extension into Pi's global extension directory:
 cp extensions/slash-menu-shortcut/index.ts ~/.pi/agent/extensions/slash-menu-shortcut.ts
 ```
 
-Then unbind Pi's default `ctrl+p` model-cycle action in
-`~/.pi/agent/keybindings.json` so it does not compete with the extension:
+Then unbind Pi's default `ctrl+p` built-in actions in
+`~/.pi/agent/keybindings.json` so they do not compete with the extension or
+emit shortcut-conflict warnings:
 
 ```json
 {
-  "app.model.cycleForward": []
+  "app.model.cycleForward": [],
+  "app.models.toggleProvider": []
 }
 ```
 
-If you already have a keybindings file, merge that entry with your existing
+If you already have a keybindings file, merge those entries with your existing
 settings.
 
 Then restart Pi or run:
