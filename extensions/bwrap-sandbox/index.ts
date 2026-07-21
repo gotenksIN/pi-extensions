@@ -22,7 +22,7 @@ import {
   readFileSync,
   realpathSync,
 } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, hostname } from "node:os";
 import {
   delimiter,
   dirname,
@@ -57,6 +57,8 @@ interface SandboxConfig {
   systemPaths: string[];
   /** Off by default. When true, bash runs with --unshare-net. */
   isolateNetwork: boolean;
+  /** Mount a live SSH agent socket for git/ssh without exposing private keys. */
+  sshAgent: boolean;
   autoApproveCommands: string[];
   blockOutsideAccess: boolean;
 }
@@ -94,12 +96,27 @@ const DEFAULT_CONFIG: SandboxConfig = {
     "~/sandbox": "write",
     "~/.config": "read",
     "~/.gitconfig": "read",
+    "~/.ssh": "none",
+    "~/.ssh/config": "read",
+    "~/.ssh/known_hosts": "read",
+    "~/.ssh/known_hosts2": "read",
+    "~/.ssh/id_ed25519.pub": "read",
+    "~/.ssh/id_ecdsa.pub": "read",
+    "~/.ssh/id_ecdsa_sk.pub": "read",
+    "~/.ssh/id_rsa.pub": "read",
+    "~/.ssh/id_dsa.pub": "read",
+    "~/.ssh/id_ed25519": "none",
+    "~/.ssh/id_ecdsa": "none",
+    "~/.ssh/id_ecdsa_sk": "none",
+    "~/.ssh/id_rsa": "none",
+    "~/.ssh/id_dsa": "none",
     "~/.pi": "read",
   },
   extraWritePaths: [],
   extraReadPaths: [],
   systemPaths: ["/usr", "/bin", "/lib", "/lib64", "/etc", "/opt"],
   isolateNetwork: false,
+  sshAgent: true,
   autoApproveCommands: [],
   blockOutsideAccess: false,
 };
@@ -129,7 +146,7 @@ function parseConfigFile(path: string): Partial<SandboxConfig> {
   }
 
   const result: Partial<SandboxConfig> = {};
-  const booleans = ["enabled", "isolateNetwork", "blockOutsideAccess"] as const;
+  const booleans = ["enabled", "isolateNetwork", "sshAgent", "blockOutsideAccess"] as const;
   const arrays = [
     "extraWritePaths",
     "extraReadPaths",
@@ -585,6 +602,63 @@ function resolverMountPaths(systemPaths: string[]): string[] {
   }
 }
 
+function parseKeychainSshAuthSock(): string | undefined {
+  try {
+    const keychainPath = join(homedir(), ".keychain", `${hostname()}-sh`);
+    const contents = readFileSync(keychainPath, "utf8");
+    const match = contents.match(/SSH_AUTH_SOCK=(?:"([^"]+)"|'([^']+)'|([^;\s]+))/);
+    return match?.[1] ?? match?.[2] ?? match?.[3];
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveSshAuthSock(): string | undefined {
+  const candidates = [process.env.SSH_AUTH_SOCK, parseKeychainSshAuthSock()]
+    .filter((path): path is string => typeof path === "string" && path.length > 0);
+
+  for (const candidate of unique(candidates)) {
+    const resolved = expandTilde(candidate);
+    if (!isAbsolute(resolved)) continue;
+    try {
+      if (lstatSync(resolved).isSocket()) return resolved;
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  return undefined;
+}
+
+function pushDirectoryScaffold(args: string[], directory: string): void {
+  const dirs: string[] = [];
+  let current = normalize(directory);
+  while (current !== "/" && current !== ".") {
+    dirs.unshift(current);
+    current = dirname(current);
+  }
+  for (const dir of dirs) args.push("--dir", dir);
+}
+
+function sshGitCommand(sshAuthSock: string): string {
+  const configPath = join(homedir(), ".ssh", "config");
+  return [
+    "ssh",
+    "-F", shellQuote(configPath),
+    "-o", shellQuote(`IdentityAgent=${sshAuthSock}`),
+    "-o", "IdentitiesOnly=no",
+    "-o", "IdentityFile=none",
+  ].join(" ");
+}
+
+function sandboxEnv(config: SandboxConfig, sshAuthSock: string | undefined): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  if (config.sshAgent && sshAuthSock) {
+    env.SSH_AUTH_SOCK = sshAuthSock;
+    env.GIT_SSH_COMMAND ??= sshGitCommand(sshAuthSock);
+  }
+  return env;
+}
+
 function findTrustedBwrap(writableRoots: string[]): string | undefined {
   const candidates = [
     "/usr/bin/bwrap",
@@ -651,8 +725,28 @@ async function probeBwrap(executable: string): Promise<string | undefined> {
   });
 }
 
-function pushFilesystemPolicy(args: string[], filesystem: Record<string, FileAccess>): void {
+function hasReadablePolicyChild(path: string, entries: Array<[string, FileAccess]>): boolean {
+  return entries.some(([childPath, access]) => access !== "none" && childPath !== path && isPathWithin(childPath, path));
+}
+
+function hasNoneDirectoryAncestor(path: string, entries: Array<[string, FileAccess]>): boolean {
+  return entries.some(([parentPath, access]) => {
+    if (access !== "none" || parentPath === path || !isPathWithin(path, parentPath)) return false;
+    try {
+      return lstatSync(parentPath).isDirectory();
+    } catch {
+      return false;
+    }
+  });
+}
+
+function pushFilesystemPolicy(
+  args: string[],
+  filesystem: Record<string, FileAccess>,
+  beforeReadOnlyRemount?: () => void,
+): void {
   const entries = Object.entries(filesystem).sort(([left], [right]) => left.length - right.length);
+  const lateReadOnlyRemounts: string[] = [];
 
   for (const [path, access] of entries) {
     if (!existsSync(path)) continue;
@@ -661,11 +755,27 @@ function pushFilesystemPolicy(args: string[], filesystem: Record<string, FileAcc
     } else if (access === "write") {
       args.push("--bind", path, path);
     } else if (lstatSync(path).isDirectory()) {
-      args.push("--tmpfs", path, "--remount-ro", path);
-    } else {
+      args.push("--tmpfs", path);
+      if (hasReadablePolicyChild(path, entries)) lateReadOnlyRemounts.push(path);
+      else args.push("--remount-ro", path);
+    } else if (!hasNoneDirectoryAncestor(path, entries)) {
       args.push("--ro-bind", "/dev/null", path);
     }
   }
+
+  beforeReadOnlyRemount?.();
+  for (const path of lateReadOnlyRemounts.sort((left, right) => right.length - left.length)) {
+    args.push("--remount-ro", path);
+  }
+}
+
+function pushSshAgentMount(args: string[], config: SandboxConfig, sshAuthSock: string | undefined): void {
+  if (!config.sshAgent || !sshAuthSock) return;
+  const socketDir = dirname(sshAuthSock);
+  const sshDir = join(homedir(), ".ssh");
+  if (isPathWithin(socketDir, sshDir)) args.push("--dir", socketDir);
+  else pushDirectoryScaffold(args, socketDir);
+  args.push("--bind", sshAuthSock, sshAuthSock);
 }
 
 function buildBwrapArgs(
@@ -673,6 +783,7 @@ function buildBwrapArgs(
   cwd: string,
   config: SandboxConfig,
   approvedMounts: ApprovedMount[],
+  sshAuthSock: string | undefined,
 ): string[] {
   const args = [
     "--die-with-parent",
@@ -686,7 +797,7 @@ function buildBwrapArgs(
   pushMounts(args, "--bind", config.extraWritePaths);
 
   // Structured entries are applied broad-to-narrow so specific rules win.
-  pushFilesystemPolicy(args, config.filesystem);
+  pushFilesystemPolicy(args, config.filesystem, () => pushSshAgentMount(args, config, sshAuthSock));
 
   // Explicit one-time/session approval has final precedence.
   pushMounts(args, "--ro-bind", approvedMounts.filter((mount) => !mount.writable).map((mount) => mount.path));
@@ -707,12 +818,14 @@ function createSandboxedBashOps(
   return {
     async exec(command, cwd, { onData, signal, timeout }) {
       if (!existsSync(cwd)) throw new Error(`Working directory does not exist: ${cwd}`);
-      const args = buildBwrapArgs(command, cwd, config, approvedMounts);
+      const sshAuthSock = config.sshAgent ? resolveSshAuthSock() : undefined;
+      const args = buildBwrapArgs(command, cwd, config, approvedMounts, sshAuthSock);
 
       return new Promise((resolvePromise, reject) => {
         const child = spawn(executable, args, {
           cwd,
           detached: true,
+          env: sandboxEnv(config, sshAuthSock),
           stdio: ["ignore", "pipe", "pipe"],
         });
         let timedOut = false;
@@ -998,7 +1111,18 @@ export default function sandboxExtension(pi: ExtensionAPI) {
           name: "~/.pi read-only mount",
           command: "test -r \"$HOME/.pi/README.md\" && test ! -w \"$HOME/.pi\"",
         },
+        {
+          name: "private SSH keys absent",
+          command: "test ! -e \"$HOME/.ssh/id_ed25519\" && test ! -e \"$HOME/.ssh/id_rsa\"",
+        },
       ];
+
+      if (config.sshAgent && resolveSshAuthSock()) {
+        checks.push({
+          name: "SSH agent socket",
+          command: "test -S \"$SSH_AUTH_SOCK\" && ssh-add -l >/dev/null",
+        });
+      }
 
       for (const [policyPath, access] of Object.entries(config.filesystem)) {
         if (access === "read" && existsSync(policyPath)) {
@@ -1024,12 +1148,14 @@ export default function sandboxExtension(pi: ExtensionAPI) {
   pi.registerCommand("sandbox", {
     description: "Show sandbox status and configuration",
     handler: async (_args, ctx) => {
+      const sshAuthSock = resolveSshAuthSock();
       const lines = [
         `Bubblewrap sandbox: ${state.toUpperCase()}`,
         `Reason: ${stateReason}`,
         `Bubblewrap: ${bwrapExecutable ?? "not available"}`,
         `Project: ${projectCwd}`,
         `Network isolation: ${config.isolateNetwork ? "enabled" : "disabled"}`,
+        `SSH agent: ${config.sshAgent ? (sshAuthSock ? `enabled (${sshAuthSock})` : "enabled (no live socket found)") : "disabled"}`,
         `Outside access: ${config.blockOutsideAccess ? "blocked" : "approval required"}`,
         "Filesystem policy:",
         ...Object.entries(config.filesystem).map(([path, access]) => `  • ${access}: ${path}`),
