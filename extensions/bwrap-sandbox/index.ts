@@ -592,6 +592,51 @@ function pushMounts(args: string[], option: "--bind" | "--ro-bind", paths: strin
   }
 }
 
+function writableRoots(config: SandboxConfig, additionalRoots: string[] = []): string[] {
+  return [
+    ...filesystemRootsWithAccess(config, (access) => access === "write"),
+    ...config.extraWritePaths,
+    ...additionalRoots,
+  ];
+}
+
+function nearestRoot(path: string, roots: string[]): string | undefined {
+  let selected: string | undefined;
+  for (const root of roots) {
+    const normalizedRoot = normalize(root);
+    if (!isPathWithin(path, normalizedRoot)) continue;
+    if (!selected || normalizedRoot.length > selected.length) selected = normalizedRoot;
+  }
+  return selected;
+}
+
+function realpathIfExists(path: string): string | undefined {
+  try {
+    return realpathSync(path);
+  } catch {
+    return undefined;
+  }
+}
+
+function isSafeWritableMount(path: string, roots: string[], config: SandboxConfig): boolean {
+  const lexicalPath = normalize(path);
+  const realPath = realpathIfExists(lexicalPath);
+  if (!realPath) return false;
+  if (filesystemAccess(realPath, config.filesystem) === "none") return false;
+
+  const root = nearestRoot(lexicalPath, roots);
+  if (!root) return false;
+  const realRoot = realpathIfExists(root) ?? resolvePath(root, "/");
+  return isPathWithin(realPath, realRoot);
+}
+
+function pushWritableMounts(args: string[], paths: string[], config: SandboxConfig, additionalRoots: string[] = []): void {
+  const roots = writableRoots(config, additionalRoots);
+  for (const path of unique(paths)) {
+    if (existsSync(path) && isSafeWritableMount(path, roots, config)) args.push("--bind", path, path);
+  }
+}
+
 /** WSL keeps resolv.conf outside /etc; preserve the symlink target in bwrap. */
 function resolverMountPaths(systemPaths: string[]): string[] {
   try {
@@ -744,10 +789,10 @@ function hasNoneDirectoryAncestor(path: string, entries: Array<[string, FileAcce
 
 function pushFilesystemPolicy(
   args: string[],
-  filesystem: Record<string, FileAccess>,
+  config: SandboxConfig,
   beforeReadOnlyRemount?: () => void,
 ): void {
-  const entries = Object.entries(filesystem).sort(([left], [right]) => left.length - right.length);
+  const entries = Object.entries(config.filesystem).sort(([left], [right]) => left.length - right.length);
   const lateReadOnlyRemounts: string[] = [];
 
   for (const [path, access] of entries) {
@@ -755,7 +800,7 @@ function pushFilesystemPolicy(
     if (access === "read") {
       args.push("--ro-bind", path, path);
     } else if (access === "write") {
-      args.push("--bind", path, path);
+      pushWritableMounts(args, [path], config);
     } else if (lstatSync(path).isDirectory()) {
       args.push("--tmpfs", path);
       if (hasReadablePolicyChild(path, entries)) lateReadOnlyRemounts.push(path);
@@ -836,10 +881,10 @@ function buildBwrapArgs(
 
   pushMounts(args, "--ro-bind", [...config.systemPaths, ...resolverMountPaths(config.systemPaths)]);
   pushMounts(args, "--ro-bind", config.extraReadPaths);
-  pushMounts(args, "--bind", config.extraWritePaths);
+  pushWritableMounts(args, config.extraWritePaths, config);
 
   // Structured entries are applied broad-to-narrow so specific rules win.
-  pushFilesystemPolicy(args, config.filesystem, () => pushSshAgentMount(args, config, sshAuthSock));
+  pushFilesystemPolicy(args, config, () => pushSshAgentMount(args, config, sshAuthSock));
 
   // Git worktrees can keep their actual git/common dirs outside the project.
   // Mount those metadata dirs read-only after broad writable roots so git can
@@ -848,7 +893,8 @@ function buildBwrapArgs(
 
   // Explicit one-time/session approval has final precedence.
   pushMounts(args, "--ro-bind", approvedMounts.filter((mount) => !mount.writable).map((mount) => mount.path));
-  pushMounts(args, "--bind", approvedMounts.filter((mount) => mount.writable).map((mount) => mount.path));
+  const approvedWritePaths = approvedMounts.filter((mount) => mount.writable).map((mount) => mount.path);
+  pushWritableMounts(args, approvedWritePaths, config, approvedWritePaths);
 
   args.push("--dev", "/dev", "--proc", "/proc");
   if (!config.extraWritePaths.includes("/tmp")) args.push("--tmpfs", "/tmp");
