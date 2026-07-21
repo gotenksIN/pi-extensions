@@ -248,3 +248,44 @@ Compact string form is also supported:
 
 Only `query` is required. `provider` and `model` are optional and are tried
 first when supplied.
+
+## delete-session
+
+A small session-management extension that registers `/delete`.
+
+### Features
+
+- Deletes the current session file after an explicit confirmation prompt.
+- Waits for Pi to become idle before deleting.
+- Starts a fresh session after deleting the old session file.
+- Safely no-ops for ephemeral sessions with no backing session file.
+
+### Install
+
+Copy the extension into Pi's global extension directory:
+
+```bash
+mkdir -p ~/.pi/agent/extensions/delete-session
+cp extensions/delete-session/index.ts ~/.pi/agent/extensions/delete-session/index.ts
+```
+
+Then restart Pi or run:
+
+```text
+/reload
+```
+
+### Command
+
+Inside Pi:
+
+```text
+/delete
+```
+
+The command prompts before deletion:
+
+```text
+No - keep it
+Yes - delete and start new
+```
