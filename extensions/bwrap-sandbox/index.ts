@@ -89,6 +89,8 @@ const DEFAULT_CONFIG: SandboxConfig = {
   filesystem: {
     ":project": "write",
     ":project/.git": "read",
+    ":project/.git/config": "read",
+    ":project/.git/hooks": "none",
     ":project/.agents": "read",
     ":project/.codex": "read",
     ":project/.pi": "read",
@@ -1211,6 +1213,10 @@ export default function sandboxExtension(pi: ExtensionAPI) {
         {
           name: "git metadata readable",
           command: "git rev-parse --git-dir >/dev/null",
+        },
+        {
+          name: "git hooks hidden when present",
+          command: "test ! -d .git/hooks || test -z \"$(ls -A .git/hooks)\"",
         },
         {
           name: "private SSH keys absent",
