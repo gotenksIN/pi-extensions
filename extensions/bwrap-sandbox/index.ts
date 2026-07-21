@@ -686,6 +686,8 @@ async function probeBwrap(executable: string): Promise<string | undefined> {
     "--die-with-parent",
     "--new-session",
     "--unshare-user",
+    "--cap-drop",
+    "ALL",
     "--unshare-pid",
     "--ro-bind",
     "/",
@@ -789,6 +791,8 @@ function buildBwrapArgs(
     "--die-with-parent",
     "--new-session",
     "--unshare-user",
+    "--cap-drop",
+    "ALL",
     "--unshare-pid",
   ];
 
@@ -1110,6 +1114,10 @@ export default function sandboxExtension(pi: ExtensionAPI) {
         {
           name: "~/.pi read-only mount",
           command: "test -r \"$HOME/.pi/README.md\" && test ! -w \"$HOME/.pi\"",
+        },
+        {
+          name: "fresh procfs",
+          command: "test -r /proc/self/status && grep -q '^NSpid:' /proc/self/status",
         },
         {
           name: "private SSH keys absent",
