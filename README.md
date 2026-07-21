@@ -316,9 +316,19 @@ emit shortcut-conflict warnings:
 ```json
 {
   "app.model.cycleForward": [],
+  "app.session.togglePath": [],
   "app.models.toggleProvider": []
 }
 ```
+
+These are the complete exact `ctrl+p` default bindings Pi currently documents:
+
+- `app.model.cycleForward` - main app model cycling
+- `app.session.togglePath` - session picker path display toggle
+- `app.models.toggleProvider` - `/scoped-models` provider toggle
+
+`app.model.cycleBackward` uses `shift+ctrl+p`, not exact `ctrl+p`, so it does
+not conflict with this extension.
 
 If you already have a keybindings file, merge those entries with your existing
 settings.
