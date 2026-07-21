@@ -289,3 +289,48 @@ The command prompts before deletion:
 No - keep it
 Yes - delete and start new
 ```
+
+## slash-menu-shortcut
+
+A tiny shortcut extension that makes `ctrl+p` behave like typing `/` in the
+chat editor, matching OpenCode command-menu muscle memory.
+
+### Features
+
+- Registers `ctrl+p` as a global Pi shortcut.
+- Inserts `/` into the focused editor with `ctx.ui.pasteToEditor("/")`.
+- Reuses Pi's built-in slash-command autocomplete/menu instead of replacing it.
+
+### Install
+
+Copy the extension into Pi's global extension directory:
+
+```bash
+cp extensions/slash-menu-shortcut/index.ts ~/.pi/agent/extensions/slash-menu-shortcut.ts
+```
+
+Then unbind Pi's default `ctrl+p` model-cycle action in
+`~/.pi/agent/keybindings.json` so it does not compete with the extension:
+
+```json
+{
+  "app.model.cycleForward": []
+}
+```
+
+If you already have a keybindings file, merge that entry with your existing
+settings.
+
+Then restart Pi or run:
+
+```text
+/reload
+```
+
+### Shortcut
+
+Inside Pi's chat editor:
+
+```text
+ctrl+p
+```
