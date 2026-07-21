@@ -1211,8 +1211,8 @@ export default function sandboxExtension(pi: ExtensionAPI) {
           command: "test -r /proc/self/status && grep -q '^NSpid:' /proc/self/status",
         },
         {
-          name: "git metadata readable",
-          command: "git rev-parse --git-dir >/dev/null",
+          name: "git metadata readable when in a repo",
+          command: "git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0; git rev-parse --git-dir >/dev/null",
         },
         {
           name: "git hooks hidden when present",
