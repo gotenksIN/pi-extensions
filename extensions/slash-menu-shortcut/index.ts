@@ -10,6 +10,21 @@ class SlashMenuShortcutEditor extends CustomEditor {
       return;
     }
 
+    // Most Linux terminals encode Ctrl+Backspace as BS (0x08), which Pi
+    // intentionally treats as ambiguous. Plain Backspace is normally DEL (0x7f).
+    if (matchesKey(data, "ctrl+backspace") || data === "\x08") {
+      // Reuse Pi's built-in Alt+Backspace word-deletion behavior.
+      super.handleInput("\x1b\x7f");
+      return;
+    }
+
+    if (matchesKey(data, "ctrl+delete")) {
+      // Use the modifier-aware Alt+Delete sequence. A legacy Alt+D sequence is
+      // ignored while Kitty keyboard protocol is active.
+      super.handleInput("\x1b[3;3~");
+      return;
+    }
+
     super.handleInput(data);
   }
 }

@@ -301,9 +301,10 @@ chat editor, matching OpenCode command-menu muscle memory.
 
 ### Features
 
-- Registers `ctrl+p` as a global Pi shortcut.
-- Inserts `/` into the focused editor with `ctx.ui.pasteToEditor("/")`.
+- Makes `ctrl+p` insert `/` in the chat editor.
 - Reuses Pi's built-in slash-command autocomplete/menu instead of replacing it.
+- Maps `ctrl+backspace` to backward word deletion.
+- Maps `ctrl+delete` to forward word deletion.
 
 ### Install
 
