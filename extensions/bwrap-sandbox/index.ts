@@ -88,7 +88,7 @@ const DEFAULT_CONFIG: SandboxConfig = {
   enabled: true,
   filesystem: {
     ":project": "write",
-    ":project/.git": "read",
+    ":project/.git": "write",
     ":project/.git/config": "read",
     ":project/.git/hooks": "none",
     ":project/.agents": "read",
