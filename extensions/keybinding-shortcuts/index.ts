@@ -1,7 +1,7 @@
 import { CustomEditor, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { matchesKey } from "@earendil-works/pi-tui";
 
-class SlashMenuShortcutEditor extends CustomEditor {
+class KeybindingShortcutsEditor extends CustomEditor {
   handleInput(data: string): void {
     if (matchesKey(data, "ctrl+p")) {
       // Match the user's muscle memory for typing `/`: feed a literal slash
@@ -33,6 +33,6 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", (_event, ctx) => {
     if (ctx.mode !== "tui") return;
 
-    ctx.ui.setEditorComponent((tui, theme, keybindings) => new SlashMenuShortcutEditor(tui, theme, keybindings));
+    ctx.ui.setEditorComponent((tui, theme, keybindings) => new KeybindingShortcutsEditor(tui, theme, keybindings));
   });
 }

@@ -296,10 +296,10 @@ No - keep it
 Yes - delete and start new
 ```
 
-## slash-menu-shortcut
+## keybinding-shortcuts
 
-A tiny shortcut extension that makes `ctrl+p` behave like typing `/` in the
-chat editor, matching OpenCode command-menu muscle memory.
+An editor shortcut extension that adds OpenCode-style command-menu and word
+deletion keybindings.
 
 ### Features
 
@@ -313,7 +313,7 @@ chat editor, matching OpenCode command-menu muscle memory.
 Copy the extension into Pi's global extension directory:
 
 ```bash
-cp extensions/slash-menu-shortcut/index.ts ~/.pi/agent/extensions/slash-menu-shortcut.ts
+cp extensions/keybinding-shortcuts/index.ts ~/.pi/agent/extensions/keybinding-shortcuts.ts
 ```
 
 Then unbind Pi's default `ctrl+p` built-in actions in
