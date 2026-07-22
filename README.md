@@ -175,12 +175,10 @@ A provider-native grounded web search extension that registers the real Pi tool
 - Uses provider-native web search/grounding where available:
   - Google Gemini `googleSearch`
   - OpenAI Responses API `web_search`
-  - OpenRouter Responses API `web` plugin
 - Returns inline numeric citations like `[1]` plus a final `Sources:` list.
 - Supports ordered model fallback. By default:
-  1. `google/gemini-3.5-flash`
+  1. `google/gemini-3.6-flash`
   2. `openai/gpt-5.5`
-  3. `openrouter/google/gemini-3.5-flash`
 - Allows per-call preferred backend via optional `provider` and `model` tool
   parameters; configured fallbacks are tried after the requested backend.
 - Inherits auth, headers, and base URLs from Pi's model registry:
@@ -225,9 +223,8 @@ Example fallback config:
 ```json
 {
   "models": [
-    { "provider": "google", "model": "gemini-3.5-flash" },
-    { "provider": "openai", "model": "gpt-5.5" },
-    { "provider": "openrouter", "model": "google/gemini-3.5-flash" }
+    { "provider": "google", "model": "gemini-3.6-flash" },
+    { "provider": "openai", "model": "gpt-5.5" }
   ]
 }
 ```
@@ -237,9 +234,8 @@ Compact string form is also supported:
 ```json
 {
   "models": [
-    "google/gemini-3.5-flash",
-    "openai/gpt-5.5",
-    "openrouter/google/gemini-3.5-flash"
+    "google/gemini-3.6-flash",
+    "openai/gpt-5.5"
   ]
 }
 ```
@@ -250,7 +246,7 @@ Compact string form is also supported:
 {
   "query": "current search query",
   "provider": "google",
-  "model": "gemini-3.5-flash"
+  "model": "gemini-3.6-flash"
 }
 ```
 

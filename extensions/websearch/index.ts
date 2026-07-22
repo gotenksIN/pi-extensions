@@ -4,20 +4,19 @@
  * Registers a `websearch_cited` tool that performs LLM-grounded web search
  * with inline citations and a Sources list of URLs.
  *
- * Backends supported: Google Gemini, OpenAI, OpenRouter
+ * Backends supported: Google Gemini, OpenAI
  *
  * Config: .pi/websearch.json (project-local) or ~/.pi/agent/extensions/websearch.json (global)
  * Inherits auth/base URLs/headers from Pi's configured providers — no separate env vars needed.
  *
  * Default fallback order:
- *   google/gemini-3.5-flash -> openai/gpt-5.5 -> openrouter/google/gemini-3.5-flash
+ *   google/gemini-3.6-flash -> openai/gpt-5.5
  *
  * Example config:
  * {
  *   "models": [
- *     { "provider": "google", "model": "gemini-3.5-flash" },
- *     { "provider": "openai", "model": "gpt-5.5" },
- *     { "provider": "openrouter", "model": "google/gemini-3.5-flash" }
+ *     { "provider": "google", "model": "gemini-3.6-flash" },
+ *     { "provider": "openai", "model": "gpt-5.5" }
  *   ]
  * }
  */
@@ -30,7 +29,7 @@ import { Type } from "typebox";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type WebsearchProvider = "google" | "openai" | "openrouter";
+type WebsearchProvider = "google" | "openai";
 
 interface WebsearchModelConfig {
   provider: WebsearchProvider;
@@ -67,9 +66,8 @@ interface ResolvedModelAuth {
 type ToolContext = Parameters<Parameters<ExtensionAPI["registerTool"]>[0]["execute"]>[4];
 
 const DEFAULT_MODELS: WebsearchModelConfig[] = [
-  { provider: "google", model: "gemini-3.5-flash" },
+  { provider: "google", model: "gemini-3.6-flash" },
   { provider: "openai", model: "gpt-5.5" },
-  { provider: "openrouter", model: "google/gemini-3.5-flash" },
 ];
 
 const DEFAULT_CONFIG: WebsearchConfig = {
@@ -101,7 +99,7 @@ function loadConfig(cwd: string): WebsearchConfig {
 }
 
 function isWebsearchProvider(value: unknown): value is WebsearchProvider {
-  return value === "google" || value === "openai" || value === "openrouter";
+  return value === "google" || value === "openai";
 }
 
 function parseModelEntry(value: unknown): WebsearchModelConfig | undefined {
@@ -123,7 +121,6 @@ function parseModelEntry(value: unknown): WebsearchModelConfig | undefined {
 
 function inferProviderForModel(model: string): WebsearchProvider | undefined {
   const lower = model.toLowerCase();
-  if (model.includes("/")) return "openrouter";
   if (lower.startsWith("gemini-")) return "google";
   if (lower.startsWith("gpt-") || lower.startsWith("o1") || lower.startsWith("o3") || lower.startsWith("o4")) return "openai";
   return undefined;
@@ -600,90 +597,6 @@ function addOpenAISource(sources: OpenAISource[], value: unknown): void {
   });
 }
 
-// ─── OpenRouter Web Search ───────────────────────────────────────────────────
-
-async function openrouterSearch(
-  query: string,
-  model: string,
-  auth: ModelAuth,
-  signal: AbortSignal,
-): Promise<string> {
-  const body = {
-    model,
-    input: buildWebSearchUserPrompt(query),
-    plugins: [{ id: "web", search_prompt: buildWebSearchUserPrompt(query) }],
-    store: false,
-    stream: false,
-  };
-
-  const url = (auth.baseUrl || "https://openrouter.ai/api/v1").replace(/\/+$/, "") + "/responses";
-  const response = await fetch(url, {
-    method: "POST",
-    headers: requestHeaders(auth, { "Content-Type": "application/json" }, "authorization"),
-    body: JSON.stringify(body),
-    signal,
-  });
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`OpenRouter API error ${response.status}: ${text}`);
-  }
-
-  const payload = await response.json();
-  return formatOpenRouterResponse(payload, query);
-}
-
-function formatOpenRouterResponse(payload: unknown, query: string): string {
-  if (!payload || typeof payload !== "object") return `No results for "${query}".`;
-
-  const root = payload as { output_text?: string; output?: unknown[] };
-
-  // Direct output_text
-  if (typeof root.output_text === "string" && root.output_text.trim()) {
-    return root.output_text;
-  }
-
-  const output = root.output;
-  if (!Array.isArray(output) || output.length === 0) {
-    return `Web search completed for "${query}", but no results were returned.`;
-  }
-
-  let combined = "";
-  const sources: OpenAISource[] = [];
-
-  for (const item of output) {
-    if (!item || typeof item !== "object") continue;
-    const msg = item as { type?: string; content?: unknown[] };
-    if (msg.type !== "message") continue;
-
-    const content = msg.content;
-    if (!Array.isArray(content)) continue;
-
-    for (const part of content) {
-      if (!part || typeof part !== "object") continue;
-      const p = part as { type?: string; text?: string; annotations?: unknown[] };
-      if (p.type !== "output_text") continue;
-
-      if (typeof p.text === "string") combined += p.text;
-
-      if (Array.isArray(p.annotations)) {
-        for (const ann of p.annotations) addOpenAISource(sources, ann);
-      }
-    }
-  }
-
-  if (!combined.trim()) {
-    return `Web search completed for "${query}", but no results were returned.`;
-  }
-
-  if (sources.length > 0 && !/(^|\n)Sources:/i.test(combined)) {
-    const lines = sources.map((s, i) => `[${i + 1}] ${s.title ?? "Untitled"} (${s.url})`);
-    combined += `\n\nSources:\n${lines.join("\n")}`;
-  }
-
-  return combined;
-}
-
 async function runSearchTarget(
   query: string,
   target: WebsearchModelConfig,
@@ -699,10 +612,6 @@ async function runSearchTarget(
     case "openai": {
       const resolved = await resolveModelAuth("openai", target.model, ctx);
       return { text: await openaiSearch(query, resolved.id, resolved.auth, config.openai, signal), provider: resolved.provider, model: resolved.id };
-    }
-    case "openrouter": {
-      const resolved = await resolveModelAuth("openrouter", target.model, ctx);
-      return { text: await openrouterSearch(query, resolved.id, resolved.auth, signal), provider: resolved.provider, model: resolved.id };
     }
   }
 }
@@ -750,7 +659,7 @@ export default function (pi: ExtensionAPI) {
     name: "websearch_cited",
     label: "Web Search (Cited)",
     description:
-      "Performs provider-native grounded web search with ordered fallback: Google, then OpenAI, then OpenRouter by default. " +
+      "Performs provider-native grounded web search with ordered fallback: Google, then OpenAI by default. " +
       "Returns a concise digest with inline citations and a Sources list of URLs. " +
       "Use optional provider/model parameters to try a specific backend first. " +
       "Returns results with citation markers like [1][2] and a Sources section at the end. " +
@@ -766,9 +675,8 @@ export default function (pi: ExtensionAPI) {
       provider: Type.Optional(Type.Union([
         Type.Literal("google"),
         Type.Literal("openai"),
-        Type.Literal("openrouter"),
-      ], { description: "Optional provider to try first: google, openai, or openrouter" })),
-      model: Type.Optional(Type.String({ description: "Optional model id to try first, e.g. gemini-3.5-flash or gpt-5.5" })),
+      ], { description: "Optional provider to try first: google or openai" })),
+      model: Type.Optional(Type.String({ description: "Optional model id to try first, e.g. gemini-3.6-flash or gpt-5.5" })),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       const query = params.query?.trim();
