@@ -96,6 +96,7 @@ const DEFAULT_CONFIG: SandboxConfig = {
     ":project/.pi": "read",
     ":project/.env": "read",
     "~/sandbox": "write",
+    "~/.local/bin": "read",
     "~/.config": "read",
     "~/.gitconfig": "read",
     "~/.ssh": "none",

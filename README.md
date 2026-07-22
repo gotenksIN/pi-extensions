@@ -16,6 +16,7 @@ A Linux `bubblewrap` sandbox extension for Pi bash and file tools.
 - Keeps a sparse host-read model instead of binding the full host filesystem.
 - Keeps project `.git` metadata writable for normal Git operations while protecting `.git/config` and hiding `.git/hooks`.
 - Mounts other protected project paths read-only by default, including `.pi`, `.agents`, `.codex`, and `.env`.
+- Makes user-installed executables under `~/.local/bin` available read-only.
 - Keeps common tool config under `~/.config` read-only by default.
 - Keeps Git user config under `~/.gitconfig` read-only by default.
 - Supports SSH/Git pushes via a mounted SSH agent socket without mounting private keys.
@@ -86,6 +87,7 @@ Example:
     ":project/.pi": "read",
     ":project/.env": "read",
     "~/sandbox": "write",
+    "~/.local/bin": "read",
     "~/.config": "read",
     "~/.gitconfig": "read",
     "~/.ssh": "none",
