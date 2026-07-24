@@ -97,6 +97,7 @@ const DEFAULT_CONFIG: SandboxConfig = {
     ":project/.env": "read",
     "~/sandbox": "write",
     "~/.local/bin": "read",
+    "~/.local/lib/pi": "read",
     "~/.config": "read",
     "~/.gitconfig": "read",
     "~/.ssh": "none",
@@ -1204,8 +1205,8 @@ export default function sandboxExtension(pi: ExtensionAPI) {
             : "curl -fsS --connect-timeout 10 --max-time 15 https://example.com -o /dev/null",
         },
         {
-          name: "~/.pi read-only mount",
-          command: "test -r \"$HOME/.pi/README.md\" && test ! -w \"$HOME/.pi\"",
+          name: "~/.local/lib/pi read-only mount",
+          command: "test -r \"$HOME/.local/lib/pi/README.md\" && test ! -w \"$HOME/.local/lib/pi\"",
         },
         {
           name: "fresh procfs",
