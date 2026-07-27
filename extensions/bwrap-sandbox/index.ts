@@ -121,7 +121,7 @@ const DEFAULT_CONFIG: SandboxConfig = {
     "~/.ssh/id_rsa": "none",
     "~/.ssh/id_dsa": "none",
     "~/.pi": "read",
-    "/tmp": "read",
+    "/tmp": "write",
   },
   extraWritePaths: [],
   extraReadPaths: [],
@@ -1307,8 +1307,8 @@ export default function sandboxExtension(pi: ExtensionAPI) {
         {
           name: "network and DNS",
           command: config.isolateNetwork
-            ? "! curl -fsS --connect-timeout 5 --max-time 8 https://example.com"
-            : "curl -fsS --connect-timeout 10 --max-time 15 https://example.com",
+            ? "curl -fsS --connect-timeout 5 --max-time 8 https://example.com -o /tmp/pi-sandbox-selftest-network; status=$?; rm -f /tmp/pi-sandbox-selftest-network; test $status -ne 0"
+            : "curl -fsS --connect-timeout 10 --max-time 15 https://example.com -o /tmp/pi-sandbox-selftest-network; status=$?; rm -f /tmp/pi-sandbox-selftest-network; exit $status",
         },
         {
           name: "~/.local/lib/pi read-only mount",
@@ -1320,7 +1320,7 @@ export default function sandboxExtension(pi: ExtensionAPI) {
         },
         {
           name: "git metadata readable when in a repo",
-          command: "git rev-parse --is-inside-work-tree || exit 0; git rev-parse --git-dir",
+          command: "git rev-parse --is-inside-work-tree > /tmp/pi-sandbox-selftest-git 2>&1; status=$?; if [ $status -ne 0 ]; then rm -f /tmp/pi-sandbox-selftest-git; exit 0; fi; git rev-parse --git-dir > /tmp/pi-sandbox-selftest-git; status=$?; rm -f /tmp/pi-sandbox-selftest-git; exit $status",
         },
         {
           name: "git hooks hidden when present",
@@ -1335,7 +1335,7 @@ export default function sandboxExtension(pi: ExtensionAPI) {
       if (config.sshAgent && resolveSshAuthSock()) {
         checks.push({
           name: "SSH agent socket",
-          command: "test -S \"$SSH_AUTH_SOCK\" && ssh-add -l",
+          command: "test -S \"$SSH_AUTH_SOCK\" && ssh-add -l > /tmp/pi-sandbox-selftest-ssh; status=$?; rm -f /tmp/pi-sandbox-selftest-ssh; exit $status",
         });
       }
 
