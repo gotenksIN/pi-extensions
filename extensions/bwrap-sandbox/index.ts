@@ -1191,6 +1191,9 @@ export default function sandboxExtension(pi: ExtensionAPI) {
     ...localBash,
     label: "bash (bwrap sandbox)",
     async execute(id, params, signal, onUpdate, ctx) {
+      if (params.command.includes("/dev/null")) {
+        throw new Error("Sandbox blocked command using /dev/null: output suppression via /dev/null is prohibited.");
+      }
       if (state === "disabled") {
         return localBash.execute(id, params, signal, onUpdate);
       }
@@ -1304,8 +1307,8 @@ export default function sandboxExtension(pi: ExtensionAPI) {
         {
           name: "network and DNS",
           command: config.isolateNetwork
-            ? "! curl -fsS --connect-timeout 5 --max-time 8 https://example.com -o /dev/null"
-            : "curl -fsS --connect-timeout 10 --max-time 15 https://example.com -o /dev/null",
+            ? "! curl -fsS --connect-timeout 5 --max-time 8 https://example.com"
+            : "curl -fsS --connect-timeout 10 --max-time 15 https://example.com",
         },
         {
           name: "~/.local/lib/pi read-only mount",
@@ -1317,7 +1320,7 @@ export default function sandboxExtension(pi: ExtensionAPI) {
         },
         {
           name: "git metadata readable when in a repo",
-          command: "git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0; git rev-parse --git-dir >/dev/null",
+          command: "git rev-parse --is-inside-work-tree || exit 0; git rev-parse --git-dir",
         },
         {
           name: "git hooks hidden when present",
@@ -1332,7 +1335,7 @@ export default function sandboxExtension(pi: ExtensionAPI) {
       if (config.sshAgent && resolveSshAuthSock()) {
         checks.push({
           name: "SSH agent socket",
-          command: "test -S \"$SSH_AUTH_SOCK\" && ssh-add -l >/dev/null",
+          command: "test -S \"$SSH_AUTH_SOCK\" && ssh-add -l",
         });
       }
 
