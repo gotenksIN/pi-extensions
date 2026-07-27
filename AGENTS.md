@@ -13,6 +13,7 @@
 - For web searches and technical research, always use `websearch_cited` to fetch grounded, up-to-date information with inline citations.
 - For GitHub repositories, issues, pull requests, releases, and file browsing, prefer `gh` CLI over `webfetch`. Use `webfetch` for non-GitHub pages or when `gh` cannot access the target.
 - Prefer `rg` over `grep` or `find` for shell-based searches. Prefer native file-search and content-search tools when they are available.
+- Prefer `7z` for listing, testing, and extracting archives. Do not use `unzip` or `tar` when `7z` supports the archive format; use another tool only when `7z` is unavailable or incompatible, and state why.
 - Never use `/tmp` for temporary work. Use `~/sandbox` instead for work outside the current workspace.
 - Never use `/dev/null` under any circumstances, including for suppressing command output, error redirection (2>/dev/null), piping, testing file existence, or sandbox checks.
 
