@@ -1,0 +1,134 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { compilePolicy, type PathResolver } from "./policy.ts";
+import type {
+  FileAccess,
+  RawFilesystemRules,
+  RawSandboxConfig,
+  CompiledSandboxConfig,
+} from "./types.ts";
+
+export const DEFAULT_CONFIG: RawSandboxConfig = {
+  enabled: true,
+  isolateNetwork: false,
+  sshAgent: true,
+  filesystem: {
+    ":project": "write",
+    ":project/.git": "read",
+    "~/.ssh": "none",
+    "~/.ssh/config": "read",
+    "~/.ssh/known_hosts": "read",
+    "~/.ssh/known_hosts2": "read",
+    "~/.ssh/id_ed25519.pub": "read",
+    "~/.ssh/id_ecdsa.pub": "read",
+    "~/.ssh/id_ecdsa_sk.pub": "read",
+    "~/.ssh/id_rsa.pub": "read",
+    "~/.ssh/id_dsa.pub": "read",
+    "~/.pi": "read",
+    "/tmp": "read",
+  },
+};
+
+export interface ConfigPaths {
+  readonly global: string;
+  readonly project: string;
+}
+
+export interface RawConfigOverride {
+  readonly enabled?: boolean;
+  readonly filesystem?: RawFilesystemRules;
+  readonly isolateNetwork?: boolean;
+  readonly sshAgent?: boolean;
+}
+
+/** Decide whether the default policy protects the project's existing .git node. */
+export function defaultPolicyForProjectGitEntry(hasGitEntry: boolean): RawSandboxConfig {
+  const filesystem: Record<string, FileAccess> = { ...DEFAULT_CONFIG.filesystem };
+  if (!hasGitEntry) delete filesystem[":project/.git"];
+  return { ...DEFAULT_CONFIG, filesystem };
+}
+
+const CONFIG_FIELDS = new Set(["enabled", "filesystem", "isolateNetwork", "sshAgent"]);
+export type ConfigScope = "global" | "project";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function sourceError(source: string, message: string): Error {
+  return new Error(`Invalid sandbox configuration in ${source}: ${message}`);
+}
+
+export function parseConfigObject(
+  value: unknown,
+  source = "configuration",
+  scope: ConfigScope = "global",
+): RawConfigOverride {
+  if (!isRecord(value)) throw sourceError(source, "top-level value must be an object");
+  for (const key of Object.keys(value)) {
+    if (!CONFIG_FIELDS.has(key)) throw sourceError(source, `unsupported field ${JSON.stringify(key)}`);
+  }
+  if (scope === "project" && Object.prototype.hasOwnProperty.call(value, "sshAgent")) {
+    throw sourceError(source, "sshAgent is a global-only credential capability and is not allowed in project configuration");
+  }
+
+  const result: { enabled?: boolean; filesystem?: RawFilesystemRules; isolateNetwork?: boolean; sshAgent?: boolean } = {};
+  for (const key of ["enabled", "isolateNetwork", "sshAgent"] as const) {
+    if (value[key] === undefined) continue;
+    if (typeof value[key] !== "boolean") throw sourceError(source, `${key} must be boolean`);
+    result[key] = value[key];
+  }
+
+  if (value.filesystem !== undefined) {
+    if (!isRecord(value.filesystem)) throw sourceError(source, "filesystem must be an object");
+    const filesystem: Record<string, FileAccess> = {};
+    for (const [path, access] of Object.entries(value.filesystem)) {
+      if (!path) throw sourceError(source, "filesystem paths must not be empty");
+      if (access !== "none" && access !== "read" && access !== "write") {
+        throw sourceError(source, `filesystem access for ${JSON.stringify(path)} must be none, read, or write`);
+      }
+      filesystem[path] = access;
+    }
+    result.filesystem = filesystem;
+  }
+  return result;
+}
+
+export function mergeConfig(base: RawSandboxConfig, override: RawConfigOverride): RawSandboxConfig {
+  return {
+    enabled: override.enabled ?? base.enabled,
+    isolateNetwork: override.isolateNetwork ?? base.isolateNetwork,
+    sshAgent: override.sshAgent ?? base.sshAgent,
+    filesystem: { ...base.filesystem, ...override.filesystem },
+  };
+}
+
+function readConfigFile(path: string, scope: ConfigScope): RawConfigOverride {
+  if (!existsSync(path)) return {};
+  let value: unknown;
+  try {
+    value = JSON.parse(readFileSync(path, "utf8"));
+  } catch (error) {
+    throw sourceError(path, `could not parse JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  return parseConfigObject(value, path, scope);
+}
+
+/** Load trusted layers strictly. Parse, schema, and path errors fail closed. */
+export function loadConfig(
+  cwd: string,
+  home: string,
+  paths: ConfigPaths,
+  includeProject: boolean,
+  resolver?: PathResolver,
+): CompiledSandboxConfig {
+  let raw = mergeConfig(
+    defaultPolicyForProjectGitEntry(existsSync(join(cwd, ".git"))),
+    readConfigFile(paths.global, "global"),
+  );
+  if (includeProject) raw = mergeConfig(raw, readConfigFile(paths.project, "project"));
+  return {
+    ...raw,
+    filesystem: compilePolicy(raw.filesystem, { cwd, home }, resolver),
+  };
+}

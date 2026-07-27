@@ -11,57 +11,6 @@ pi install git:git@github.com:gotenksIN/pi-extensions.git
 pi install git:git@github.com:otahontas/pi-coding-agent-catppuccin.git
 ```
 
-Pi runs `npm install` for Git packages containing `package.json`. The
-standalone Pi binary does not include a JavaScript package manager. If `node`
-and `npm` are unavailable, temporarily install the smaller Bun runtime without
-requiring Node.js:
-
-```bash
-(
-  set -e
-
-  work="$HOME/sandbox/bun-install"
-  rm -rf "$work"
-  mkdir -p "$work" "$HOME/.local/bin"
-  cd "$work"
-
-  gh release download \
-    --repo oven-sh/bun \
-    --pattern 'bun-linux-x64.zip' \
-    --pattern 'SHASUMS256.txt'
-
-  sha256sum --check --ignore-missing SHASUMS256.txt
-  7z x bun-linux-x64.zip
-
-  # Use the absolute path because some Zsh setups alias `install` to Nala.
-  /usr/bin/install -Dm755 \
-    "$work/bun-linux-x64/bun" \
-    "$HOME/.local/bin/bun"
-
-  "$HOME/.local/bin/bun" --version
-  rm -rf "$work"
-)
-```
-
-If installing `pi-subagents` failed before Bun was available, install its
-production dependencies directly, then remove Bun because Pi's standalone
-runtime can load the installed modules without keeping the package manager:
-
-```bash
-cd ~/.pi/agent/git/github.com/tintinweb/pi-subagents
-~/.local/bin/bun install --production --ignore-scripts --no-save
-rm -f ~/.local/bin/bun
-```
-
-If a package has no dependencies, such as the Catppuccin theme, it can instead
-be cloned directly into Pi's package directory:
-
-```bash
-mkdir -p ~/.pi/agent/git/github.com/otahontas
-git clone git@github.com:otahontas/pi-coding-agent-catppuccin.git \
-  ~/.pi/agent/git/github.com/otahontas/pi-coding-agent-catppuccin
-```
-
 Copy the tracked [`settings.json`](settings.json) into Pi's agent directory to
 reproduce this setup exactly:
 
@@ -91,194 +40,132 @@ sources before installing them.
 
 ## bwrap-sandbox
 
-A Linux `bubblewrap` sandbox extension for Pi bash and file tools.
+A Linux-only Bubblewrap integrity sandbox for Pi Bash, with an application-level
+permission gate for Pi filesystem tools.
 
-### Features
+### Architecture and guarantees
 
-- Runs bash commands under `bwrap`.
-- Uses a structured filesystem policy:
-  - `"none"`
-  - `"read"`
-  - `"write"`
-- Keeps a sparse host-read model instead of binding the full host filesystem.
-- Keeps project `.git` metadata writable for normal Git operations while protecting `.git/config` and hiding `.git/hooks`.
-- Mounts other protected project paths read-only by default, including `.pi`, `.agents`, `.codex`, and `.env`.
-- Makes user-installed executables under `~/.local/bin` available read-only.
-- Makes Pi installation under `~/.local/lib/pi` available read-only.
-- Supports nested `pi`/subagent dispatch with an ephemeral writable agent directory while keeping the canonical `~/.pi` read-only.
-- Keeps common tool config under `~/.config` read-only by default.
-- Keeps Git user config under `~/.gitconfig` read-only by default.
-- Supports SSH/Git pushes via a mounted SSH agent socket without mounting private keys.
-- Mounts Git worktree/common-dir metadata read-only when it lives outside the project.
-- Keeps Pi config under `~/.pi` read-only by default.
-- Makes host `/tmp` readable and writable by default so temporary files (such as pasted TUI clipboard screenshots) are auto-approved.
-- Automatically blocks bash commands attempting output suppression using `/dev/null`.
-- Supports memory-only session grants for one-off file/bash access.
-- Makes explicit user-approved write grants override default read-only rules; `none` remains a hard denial.
-- Detects mutating Git commands (including `git -C …` and `cd … && git …`) and requests write access to the target repository.
-- Forwards non-interactive subagent access requests to the main session UI and serializes concurrent approval prompts.
-- Network access is normal by default.
-- Optional paranoid network isolation via `isolateNetwork: true`.
-- Uses PID/user namespace isolation, a fresh `/proc`, and drops capabilities inside bwrap.
+Every Bash call starts from a read-only host root with fresh `/dev` and `/proc`.
+Canonical, most-specific `none`/`read`/`write` policy and human-approved session
+write grants produce one deterministic mount plan. Grants never override
+`none`. Each session also gets a mode-0700 private writable temp capability;
+`TMPDIR`, `TMP`, and `TEMP` all identify it.
 
-### Requirements
+SSH agent compatibility is enabled by default. Only the exact canonical socket
+in inherited `SSH_AUTH_SOCK` is mounted, read-only, and it may cross an inherited
+denied parent without exposing siblings. An exact `none` rule on the socket
+vetoes startup. If globally disabled, the variable is removed and an otherwise
+visible inherited socket is exactly masked. Agent access lets sandboxed commands
+request authentication or signatures with available keys even though private
+key files remain hidden; security-focused users may disable it globally.
 
-Install `bubblewrap` and ensure `bwrap` is on `PATH`:
+The runtime keeps trusted mask and SSH-configuration source files outside the
+writable private `TMPDIR` and hides their parent behind a synthetic mount. A
+minimal mode-0600 OpenSSH system configuration is mounted read-only at the
+standard path, avoiding user-namespace ownership rejection while preserving
+permitted user SSH configuration. This supports ordinary SSH and Git-over-SSH
+without command parsing or Git-specific environment patches.
+
+This is an integrity and write-boundary sandbox, not a confidentiality boundary.
+Unmatched host files and inherited environment values are readable, and network
+access remains available unless isolated. Direct Pi filesystem tools use an
+application-level authorization gate rather than OS containment.
+
+See the authoritative
+[`extensions/bwrap-sandbox/README.md`](extensions/bwrap-sandbox/README.md) for
+the threat model, precedence, module ownership, mount invariants, lifecycle
+limitations, testing strategy, and mandatory change checklist.
+
+### Requirements and installation
+
+Linux and a working, root-owned `bubblewrap` installation are required. The
+extension probes Bubblewrap at session start and fails closed if it is missing,
+untrusted, or unusable.
 
 ```bash
-# Debian / Ubuntu / other apt-based systems
+# Debian / Ubuntu
 sudo apt update
 sudo apt install bubblewrap
 
-# Fedora / RHEL / other dnf-based systems
+# Fedora / RHEL
 sudo dnf install bubblewrap
 
-# Arch / Manjaro / other pacman-based systems
+# Arch / Manjaro
 sudo pacman -S bubblewrap
 ```
 
-### Install
-
-Copy the extension into Pi's global extension directory:
+Copy the complete module directory, then restart Pi or run `/reload`:
 
 ```bash
 mkdir -p ~/.pi/agent/extensions/bwrap-sandbox
-cp extensions/bwrap-sandbox/index.ts ~/.pi/agent/extensions/bwrap-sandbox/index.ts
-```
-
-Then restart Pi or run:
-
-```text
-/reload
+cp -a extensions/bwrap-sandbox/. ~/.pi/agent/extensions/bwrap-sandbox/
 ```
 
 ### Configuration
 
-Global config path:
+Global config: `~/.pi/agent/extensions/sandbox.json`
 
-```text
-~/.pi/agent/extensions/sandbox.json
-```
+Trusted project config: `.pi/sandbox.json`
 
-Project config path:
-
-```text
-.pi/sandbox.json
-```
-
-Example:
+Global example (`sshAgent` must be omitted from project config):
 
 ```json
 {
+  "enabled": true,
   "isolateNetwork": false,
+  "sshAgent": true,
   "filesystem": {
     ":project": "write",
-    ":project/.git": "write",
-    ":project/.git/config": "read",
-    ":project/.git/hooks": "none",
-    ":project/.agents": "read",
-    ":project/.codex": "read",
-    ":project/.pi": "read",
-    ":project/.env": "read",
-    "~/sandbox": "write",
-    "~/.local/bin": "read",
-    "~/.local/lib/pi": "read",
-    "~/.config": "read",
-    "~/.gitconfig": "read",
+    ":project/.git": "read",
     "~/.ssh": "none",
     "~/.ssh/config": "read",
     "~/.ssh/known_hosts": "read",
-    "~/.ssh/known_hosts2": "read",
-    "~/.ssh/id_ed25519.pub": "read",
-    "~/.ssh/id_ecdsa.pub": "read",
-    "~/.ssh/id_ecdsa_sk.pub": "read",
-    "~/.ssh/id_rsa.pub": "read",
-    "~/.ssh/id_dsa.pub": "read",
-    "~/.ssh/id_ed25519": "none",
-    "~/.ssh/id_ecdsa": "none",
-    "~/.ssh/id_ecdsa_sk": "none",
-    "~/.ssh/id_rsa": "none",
-    "~/.ssh/id_dsa": "none",
     "~/.pi": "read",
-    "/tmp": "write"
+    "/tmp": "read"
   }
 }
 ```
 
-Legacy compatibility:
+Configuration is strict and paths compile to canonical absolute policy. The
+credential-bearing `sshAgent` setting is global-only: project config fails
+closed if that field appears, while all other project overrides remain
+available.
 
-```json
-{
-  "allowNetwork": false
-}
-```
+The default-policy decision protects `:project/.git` as read-only only when a
+`.git` entry exists at session start. This supports both directories and regular
+linked-worktree gitfiles. If it is absent, the rule is omitted and a writable
+project can create it; the next session then protects the new entry. Metadata
+writes require an explicit grant. The policy remains static and does not infer
+external Git metadata from file contents or commands.
 
-is interpreted as:
+`isolateNetwork: true` adds `--unshare-net`. Fresh `/dev` and `/proc` satisfy
+read rules without host rebinds. Writable paths intersecting them, and readable
+overrides beneath a denied virtual path, are rejected.
 
-```json
-{
-  "isolateNetwork": true
-}
-```
+### Status and one-command tests
 
+`/sandbox` shows lifecycle state, canonical policy, network settings, private
+`TMPDIR`, grants, and whether SSH is disabled/masked, enabled and mounted, or
+enabled but unavailable.
 
-### Git and SSH
-
-The sandbox keeps Git metadata conservative by default:
-
-- `.git` is writable so normal operations such as commits can update repository metadata.
-- `.git/config` remains explicitly read-only.
-- `.git/hooks` is hidden with a `none` policy entry.
-- Git worktree `git-dir` / `git-common-dir` paths outside the project are
-  mounted read-only so commands like `git status`, `git log`, and SSH-based
-  `git push` can inspect metadata without making hooks/config writable.
-
-The sandbox intentionally does **not** mount private SSH keys. Instead, when
-`sshAgent` is enabled, it mounts a live `SSH_AUTH_SOCK` socket read/write and
-sets `GIT_SSH_COMMAND` to use the agent plus `~/.ssh/config`. This lets
-`git push` authenticate through your host SSH agent/keychain without exposing private
-key files to sandboxed bash or file tools.
-
-### Nested Pi and subagents
-
-The canonical `~/.pi` remains read-only because it contains credentials,
-settings, executable extensions, prompts, and session history. When a sandboxed
-bash command invokes `pi`, the extension creates an ephemeral writable agent
-directory under an approved writable root and sets `PI_CODING_AGENT_DIR` for
-that command. It copies JSON configuration, links read-only user resources, and
-removes package/extension discovery from the copied settings. The child remains
-inside the outer bubblewrap sandbox, and the ephemeral directory is deleted when
-the command exits.
-
-Subagent sessions that load this extension share a process-wide approval broker.
-When a subagent requests access that requires confirmation, the request is queued
-and displayed in the main interactive session instead of failing in
-non-interactive mode. Any resulting grant remains scoped to the requesting
-subagent session; explicit `none` policy entries are still denied without a
-prompt.
-
-Default:
-
-```json
-{
-  "sshAgent": true
-}
-```
-
-For keychain-managed agents, the extension also checks:
+`/sandbox-test` is the single test command. Its lazy test bridge loads the
+Pi-native unit suite first and then runs the shell integration script through
+the active session runtime. Repeated command runs reuse module registration and
+do not duplicate unit cases. If runtime initialization is unavailable, unit
+cases still run and integration is clearly reported as skipped.
 
 ```text
-~/.keychain/<hostname>-sh
-```
-
-### Commands
-
-Inside Pi:
-
-```text
-/sandbox
 /sandbox-test
 ```
+
+The command reports the unit total and integration PASS/FAIL/SKIP summary and
+writes combined output to `sandbox-manual-test.log`. Integration keeps the PNG
+fixture and runtime checks, and also creates a throwaway repository under
+private `TMPDIR`, verifies trusted source resources remain hidden, parses
+ordinary OpenSSH configuration, authenticates to an SSH Git origin, makes a real
+commit using inherited global SSH-signing config, checks its SSH `gpgsig`,
+constructs a temporary allowed-signers file, and runs `git verify-commit`. All
+fixtures are removed.
 
 ## websearch
 
