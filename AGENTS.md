@@ -5,6 +5,7 @@
 - Keep responses concise, direct, and technical.
 - Prefer small, focused changes over broad refactors unless the user asks otherwise.
 - Verify important changes before concluding when a practical check exists.
+- Do not use LaTeX math markup (such as `$\rightarrow$`, `\rightarrow`, or math delimiters) in output formatting. Use standard Unicode characters (e.g., `→`, `⇒`) or plain text so text renders correctly in TUI environments.
 
 ## Tooling Preferences
 
