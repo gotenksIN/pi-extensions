@@ -111,6 +111,7 @@ A Linux `bubblewrap` sandbox extension for Pi bash and file tools.
 - Supports SSH/Git pushes via a mounted SSH agent socket without mounting private keys.
 - Mounts Git worktree/common-dir metadata read-only when it lives outside the project.
 - Keeps Pi config under `~/.pi` read-only by default.
+- Makes `/tmp` available read-only by default so temporary files (such as pasted TUI clipboard screenshots) are auto-approved.
 - Supports memory-only session grants for one-off file/bash access.
 - Network access is normal by default.
 - Optional paranoid network isolation via `isolateNetwork: true`.
@@ -194,7 +195,8 @@ Example:
     "~/.ssh/id_ecdsa_sk": "none",
     "~/.ssh/id_rsa": "none",
     "~/.ssh/id_dsa": "none",
-    "~/.pi": "read"
+    "~/.pi": "read",
+    "/tmp": "read"
   }
 }
 ```

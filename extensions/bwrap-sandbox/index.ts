@@ -121,6 +121,7 @@ const DEFAULT_CONFIG: SandboxConfig = {
     "~/.ssh/id_rsa": "none",
     "~/.ssh/id_dsa": "none",
     "~/.pi": "read",
+    "/tmp": "read",
   },
   extraWritePaths: [],
   extraReadPaths: [],
@@ -133,7 +134,7 @@ const DEFAULT_CONFIG: SandboxConfig = {
 
 // These exist only inside bash's mount namespace. They must not authorize the
 // corresponding host paths for read/write/edit tools.
-const BASH_INTERNAL_PATHS = ["/dev", "/proc", "/tmp"];
+const BASH_INTERNAL_PATHS = ["/dev", "/proc"];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -997,7 +998,11 @@ function buildBwrapArgs(
   pushWritableMounts(args, approvedWritePaths, config, approvedWritePaths);
 
   args.push("--dev", "/dev", "--proc", "/proc");
-  if (!config.extraWritePaths.includes("/tmp")) args.push("--tmpfs", "/tmp");
+  const tmpConfigured =
+    filesystemAccess("/tmp", config.filesystem) !== undefined ||
+    config.extraWritePaths.includes("/tmp") ||
+    config.extraReadPaths.includes("/tmp");
+  if (!tmpConfigured) args.push("--tmpfs", "/tmp");
   if (config.isolateNetwork) args.push("--unshare-net");
   args.push("--chdir", cwd, "--", "bash", "-c", command);
   return args;
