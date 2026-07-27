@@ -1191,7 +1191,7 @@ export default function sandboxExtension(pi: ExtensionAPI) {
     ...localBash,
     label: "bash (bwrap sandbox)",
     async execute(id, params, signal, onUpdate, ctx) {
-      if (params.command.includes("/dev/null")) {
+      if (/(?:[021]?>>?|&>>?|\btee(?:\s+-a)?|\b(?:-o|--output)=?)\s*\/dev\/null\b/i.test(params.command)) {
         throw new Error("Sandbox blocked command using /dev/null: output suppression via /dev/null is prohibited.");
       }
       if (state === "disabled") {
