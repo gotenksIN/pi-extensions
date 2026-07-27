@@ -77,6 +77,8 @@ interface ApprovedMount {
 interface BashPathRequest {
   path: string;
   access: "read" | "write";
+  /** Mount this path itself instead of the parent needed for a file mutation. */
+  mountPath?: string;
 }
 
 interface PendingBashMount {
@@ -415,10 +417,56 @@ function addCommandSpecificRequests(requests: Map<string, "read" | "write">, seg
   }
 }
 
+const GIT_WRITE_COMMANDS = new Set([
+  "add", "am", "apply", "bisect", "branch", "checkout", "cherry-pick", "clean", "clone",
+  "commit", "fetch", "gc", "init", "merge", "mv", "notes", "pull", "push", "rebase",
+  "reset", "restore", "revert", "rm", "sparse-checkout", "stash", "switch", "tag",
+  "update-index", "update-ref", "worktree",
+]);
+
+function gitWriteRequest(segment: string[], cwd: string): BashPathRequest | undefined {
+  const command = commandName(segment);
+  if (command?.name !== "git") return undefined;
+
+  let repository = cwd;
+  let subcommand: string | undefined;
+  for (let index = command.index + 1; index < segment.length; index++) {
+    const token = segment[index];
+    if (token === "-C") {
+      const path = segment[index + 1];
+      if (path) repository = resolvePath(path, cwd);
+      index += 1;
+      continue;
+    }
+    if (token.startsWith("-C") && token.length > 2) {
+      repository = resolvePath(token.slice(2), cwd);
+      continue;
+    }
+    if (["-c", "--config-env", "--exec-path", "--git-dir", "--work-tree", "--namespace"].includes(token)) {
+      index += 1;
+      continue;
+    }
+    if (token.startsWith("-")) continue;
+    subcommand = token;
+    break;
+  }
+
+  if (!subcommand || !GIT_WRITE_COMMANDS.has(subcommand)) return undefined;
+  return { path: repository, access: "write", mountPath: repository };
+}
+
+function cdTarget(segment: string[], cwd: string): string | undefined {
+  const command = commandName(segment);
+  if (command?.name !== "cd") return undefined;
+  const target = operands(segment, command.index + 1)[0] ?? homedir();
+  return resolvePath(target, cwd);
+}
+
 /** Best-effort extraction for approval UX; bwrap remains the security boundary. */
-function extractPathRequestsFromCommand(command: string): BashPathRequest[] {
+function extractPathRequestsFromCommand(command: string, cwd: string): BashPathRequest[] {
   const tokens = shellTokens(command);
   const requests = new Map<string, "read" | "write">();
+  const scopedRequests: BashPathRequest[] = [];
 
   for (let index = 0; index < tokens.length; index++) {
     const token = tokens[index];
@@ -428,18 +476,26 @@ function extractPathRequestsFromCommand(command: string): BashPathRequest[] {
     else if (token === "<") addPathRequest(requests, next, "read");
   }
 
+  let segmentCwd = cwd;
   let segment: string[] = [];
-  for (const token of tokens) {
-    if (isShellSeparator(token)) {
-      addCommandSpecificRequests(requests, segment);
-      segment = [];
-    } else {
-      segment.push(token);
-    }
-  }
-  addCommandSpecificRequests(requests, segment);
+  const flushSegment = () => {
+    addCommandSpecificRequests(requests, segment);
+    const gitRequest = gitWriteRequest(segment, segmentCwd);
+    if (gitRequest) scopedRequests.push(gitRequest);
+    segmentCwd = cdTarget(segment, segmentCwd) ?? segmentCwd;
+    segment = [];
+  };
 
-  return [...requests.entries()].map(([path, access]) => ({ path, access }));
+  for (const token of tokens) {
+    if (isShellSeparator(token)) flushSegment();
+    else segment.push(token);
+  }
+  flushSegment();
+
+  return [
+    ...[...requests.entries()].map(([path, access]) => ({ path, access })),
+    ...scopedRequests,
+  ];
 }
 
 function nearestExistingPath(path: string): string | undefined {
@@ -539,7 +595,7 @@ async function approveBashMounts(
   const denied: string[] = [];
   const blockedOutside: string[] = [];
 
-  for (const request of extractPathRequestsFromCommand(command)) {
+  for (const request of extractPathRequestsFromCommand(command, cwd)) {
     const resolved = resolvePath(request.path, cwd);
     const policyAccess = filesystemAccess(resolved, config.filesystem);
     if (policyAccess === "none") {
@@ -565,9 +621,11 @@ async function approveBashMounts(
       continue;
     }
 
-    const mountPath = request.access === "write"
-      ? nearestExistingDirectory(dirname(resolved))
-      : nearestExistingPath(resolved);
+    const mountPath = request.mountPath
+      ? nearestExistingDirectory(resolvePath(request.mountPath, cwd))
+      : request.access === "write"
+        ? nearestExistingDirectory(dirname(resolved))
+        : nearestExistingPath(resolved);
     if (!mountPath) continue;
 
     const previous = pending.get(mountPath);

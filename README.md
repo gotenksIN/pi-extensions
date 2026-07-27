@@ -115,6 +115,7 @@ A Linux `bubblewrap` sandbox extension for Pi bash and file tools.
 - Automatically blocks bash commands attempting output suppression using `/dev/null`.
 - Supports memory-only session grants for one-off file/bash access.
 - Makes explicit user-approved write grants override default read-only rules; `none` remains a hard denial.
+- Detects mutating Git commands (including `git -C …` and `cd … && git …`) and requests write access to the target repository.
 - Network access is normal by default.
 - Optional paranoid network isolation via `isolateNetwork: true`.
 - Uses PID/user namespace isolation, a fresh `/proc`, and drops capabilities inside bwrap.
