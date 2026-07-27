@@ -92,6 +92,41 @@ interface SessionFileGrants {
   write: string[];
 }
 
+interface SandboxApprovalBroker {
+  owner?: symbol;
+  select?: (message: string, choices: string[]) => Promise<string | undefined>;
+  notify?: (message: string) => void;
+  tail: Promise<void>;
+}
+
+const APPROVAL_BROKER_KEY = Symbol.for("gotenksIN.pi-extensions.bwrap-sandbox.approval-broker");
+
+function approvalBroker(): SandboxApprovalBroker {
+  const globals = globalThis as typeof globalThis & { [APPROVAL_BROKER_KEY]?: SandboxApprovalBroker };
+  globals[APPROVAL_BROKER_KEY] ??= { tail: Promise.resolve() };
+  return globals[APPROVAL_BROKER_KEY];
+}
+
+async function selectSandboxApproval(
+  ctx: ExtensionContext,
+  message: string,
+  choices: string[],
+): Promise<string | undefined> {
+  const broker = approvalBroker();
+  const select = broker.select ?? (ctx.hasUI ? ctx.ui.select.bind(ctx.ui) : undefined);
+  if (!select) throw new Error("Sandbox approval requires an interactive parent session");
+
+  const displayMessage = ctx.hasUI ? message : `🧩 Subagent request\n\n${message}`;
+  const pending = broker.tail.then(() => select(displayMessage, choices));
+  broker.tail = pending.then(() => undefined, () => undefined);
+  return pending;
+}
+
+function notifySandboxApproval(ctx: ExtensionContext, message: string): void {
+  if (ctx.hasUI) ctx.ui.notify(message, "warning");
+  else approvalBroker().notify?.(`Subagent: ${message}`);
+}
+
 const DEFAULT_CONFIG: SandboxConfig = {
   enabled: true,
   filesystem: {
@@ -655,14 +690,8 @@ async function approveBashMounts(
     );
   }
 
-  if (!ctx.hasUI) {
-    throw new Error(
-      `Sandbox blocked bash access in non-interactive mode:\n` +
-        required.map((mount) => `  ${mount.access}: ${mount.requestedPath}`).join("\n"),
-    );
-  }
-
-  const choice = await ctx.ui.select(
+  const choice = await selectSandboxApproval(
+    ctx,
     `🔒 Bash requests filesystem access:\n\n` +
       `Command: ${command.slice(0, 300)}${command.length > 300 ? "…" : ""}\n\n` +
       `Requested:\n${required.map((mount) => `  ${describeBashAccess(mount.access)}: ${mount.requestedPath}`).join("\n")}\n\n` +
@@ -1188,11 +1217,8 @@ async function promptForFileGrant(
   ctx: ExtensionContext,
   grants: SessionFileGrants,
 ): Promise<void> {
-  if (!ctx.hasUI) {
-    throw new Error(`Sandbox blocked ${toolName} in non-interactive mode: ${resolved}`);
-  }
-
-  const choice = await ctx.ui.select(
+  const choice = await selectSandboxApproval(
+    ctx,
     `🔒 Allow ${policyRestricted ? "policy-restricted " : ""}${toolName}?\n\n` +
       `Path: ${originalPath}\nResolved: ${resolved}\n` +
       `Access: ${readOnly ? "read-only" : "write"}`,
@@ -1210,9 +1236,9 @@ async function promptForFileGrant(
   const grantedPath = choice.includes("parent directory") ? dirname(resolved) : resolved;
   const target = readOnly ? grants.read : grants.write;
   target.splice(0, target.length, ...unique([...target, grantedPath]));
-  ctx.ui.notify(
+  notifySandboxApproval(
+    ctx,
     `Sandbox: ${readOnly ? "read" : "write"} access granted for this session: ${grantedPath}`,
-    "warning",
   );
 }
 
@@ -1265,6 +1291,7 @@ export default function sandboxExtension(pi: ExtensionAPI) {
   let bwrapExecutable: string | undefined;
   const sessionFileGrants: SessionFileGrants = { read: [], write: [] };
   const sessionBashMounts: ApprovedMount[] = [];
+  const approvalBrokerOwner = Symbol("bwrap-sandbox-session");
 
   pi.registerTool({
     ...localBash,
@@ -1293,6 +1320,13 @@ export default function sandboxExtension(pi: ExtensionAPI) {
   });
 
   pi.on("session_start", async (_event, ctx) => {
+    if (ctx.hasUI) {
+      const broker = approvalBroker();
+      broker.owner = approvalBrokerOwner;
+      broker.select = (message, choices) => ctx.ui.select(message, choices);
+      broker.notify = (message) => ctx.ui.notify(message, "warning");
+    }
+
     sessionFileGrants.read.length = 0;
     sessionFileGrants.write.length = 0;
     sessionBashMounts.length = 0;
@@ -1351,6 +1385,12 @@ export default function sandboxExtension(pi: ExtensionAPI) {
   });
 
   pi.on("session_shutdown", (_event, ctx) => {
+    const broker = approvalBroker();
+    if (broker.owner === approvalBrokerOwner) {
+      broker.owner = undefined;
+      broker.select = undefined;
+      broker.notify = undefined;
+    }
     ctx.ui.setStatus("sandbox", undefined);
   });
 

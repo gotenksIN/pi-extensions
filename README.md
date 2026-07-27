@@ -116,6 +116,7 @@ A Linux `bubblewrap` sandbox extension for Pi bash and file tools.
 - Supports memory-only session grants for one-off file/bash access.
 - Makes explicit user-approved write grants override default read-only rules; `none` remains a hard denial.
 - Detects mutating Git commands (including `git -C …` and `cd … && git …`) and requests write access to the target repository.
+- Forwards non-interactive subagent access requests to the main session UI and serializes concurrent approval prompts.
 - Network access is normal by default.
 - Optional paranoid network isolation via `isolateNetwork: true`.
 - Uses PID/user namespace isolation, a fresh `/proc`, and drops capabilities inside bwrap.
@@ -248,6 +249,13 @@ that command. It copies JSON configuration, links read-only user resources, and
 removes package/extension discovery from the copied settings. The child remains
 inside the outer bubblewrap sandbox, and the ephemeral directory is deleted when
 the command exits.
+
+Subagent sessions that load this extension share a process-wide approval broker.
+When a subagent requests access that requires confirmation, the request is queued
+and displayed in the main interactive session instead of failing in
+non-interactive mode. Any resulting grant remains scoped to the requesting
+subagent session; explicit `none` policy entries are still denied without a
+prompt.
 
 Default:
 
