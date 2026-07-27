@@ -12,7 +12,7 @@
 - For GitHub repositories, issues, pull requests, releases, and file browsing, prefer `gh` CLI over `webfetch`. Use `webfetch` for non-GitHub pages or when `gh` cannot access the target.
 - Prefer `rg` over `grep` or `find` for shell-based searches. Prefer native file-search and content-search tools when they are available.
 - Never use `/tmp` for temporary work. Use `~/sandbox` instead for work outside the current workspace.
-- Do not use `/dev/null`, including for suppressing command output or errors.
+- Never use `/dev/null` under any circumstances, including for suppressing command output, error redirection (2>/dev/null), piping, testing file existence, or sandbox checks.
 
 ## Git Workflow
 
