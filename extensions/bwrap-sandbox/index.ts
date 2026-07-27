@@ -432,6 +432,19 @@ function nearestExistingPath(path: string): string | undefined {
   return resolvePath(current, "/");
 }
 
+function nearestExistingDirectory(path: string): string | undefined {
+  let current = path;
+  if (existsSync(current) && lstatSync(current).isFile()) {
+    current = dirname(current);
+  }
+  while (!existsSync(current)) {
+    const parent = dirname(current);
+    if (parent === current) return undefined;
+    current = parent;
+  }
+  return resolvePath(current, "/");
+}
+
 function isAutoApproved(command: string, configuredCommands: string[]): boolean {
   const trimmed = command.trimStart();
   return configuredCommands.some((configured) => {
@@ -532,7 +545,9 @@ async function approveBashMounts(
       continue;
     }
 
-    const mountPath = nearestExistingPath(resolved);
+    const mountPath = request.access === "write"
+      ? nearestExistingDirectory(dirname(resolved))
+      : nearestExistingPath(resolved);
     if (!mountPath) continue;
 
     const previous = pending.get(mountPath);
