@@ -1,0 +1,7 @@
+{
+  "theme": "catppuccin-latte/catppuccin-frappe",
+  "packages": [
+    "git:git@github.com:gotenksIN/pi-extensions.git",
+    "git:git@github.com:otahontas/pi-coding-agent-catppuccin.git"
+  ]
+}

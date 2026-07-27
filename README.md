@@ -2,6 +2,52 @@
 
 Extensions for the [Pi coding agent](https://github.com/earendil-works/pi).
 
+## Install the complete setup
+
+Install this extension package and the Catppuccin theme package over SSH:
+
+```bash
+pi install git:git@github.com:gotenksIN/pi-extensions.git
+pi install git:git@github.com:otahontas/pi-coding-agent-catppuccin.git
+```
+
+Pi runs `npm install` for any Git package containing `package.json`, even when
+that package has no dependencies. If the Catppuccin install fails because
+`npm` is unavailable, clone it directly into Pi's package directory:
+
+```bash
+mkdir -p ~/.pi/agent/git/github.com/otahontas
+git clone git@github.com:otahontas/pi-coding-agent-catppuccin.git \
+  ~/.pi/agent/git/github.com/otahontas/pi-coding-agent-catppuccin
+```
+
+Copy the tracked [`settings.json`](settings.json) into Pi's agent directory to
+reproduce this setup exactly:
+
+```bash
+cp settings.json ~/.pi/agent/settings.json
+```
+
+This replaces the destination settings and intentionally configures only the
+shared packages and theme. The theme pair uses Catppuccin Latte for light
+terminal backgrounds and Frappé for dark terminal backgrounds. Pi follows
+terminal color-scheme changes automatically.
+
+Restart Pi or run:
+
+```text
+/reload
+```
+
+Update both packages later with:
+
+```bash
+pi update --extensions
+```
+
+Pi packages execute code with your user permissions. Review third-party package
+sources before installing them.
+
 ## bwrap-sandbox
 
 A Linux `bubblewrap` sandbox extension for Pi bash and file tools.
