@@ -17,10 +17,16 @@ import { spawn, spawnSync } from "node:child_process";
 import {
   accessSync,
   constants,
+  copyFileSync,
   existsSync,
   lstatSync,
+  mkdtempSync,
   readFileSync,
+  readdirSync,
   realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
 } from "node:fs";
 import { homedir, hostname } from "node:os";
 import {
@@ -348,6 +354,19 @@ function commandName(segment: string[]): { name: string; index: number } | undef
     return { name: token.split("/").pop() ?? token, index };
   }
   return undefined;
+}
+
+function commandInvokesPi(command: string): boolean {
+  let segment: string[] = [];
+  for (const token of shellTokens(command)) {
+    if (isShellSeparator(token)) {
+      if (commandName(segment)?.name === "pi") return true;
+      segment = [];
+    } else {
+      segment.push(token);
+    }
+  }
+  return commandName(segment)?.name === "pi";
 }
 
 function operands(segment: string[], start: number): string[] {
@@ -714,13 +733,75 @@ function sshGitCommand(sshAuthSock: string): string {
   ].join(" ");
 }
 
-function sandboxEnv(config: SandboxConfig, sshAuthSock: string | undefined): NodeJS.ProcessEnv {
+function sandboxEnv(
+  config: SandboxConfig,
+  sshAuthSock: string | undefined,
+  nestedPiAgentDir?: string,
+): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env };
   if (config.sshAgent && sshAuthSock) {
     env.SSH_AUTH_SOCK = sshAuthSock;
     env.GIT_SSH_COMMAND ??= sshGitCommand(sshAuthSock);
   }
+  if (nestedPiAgentDir) env.PI_CODING_AGENT_DIR = nestedPiAgentDir;
   return env;
+}
+
+const NESTED_PI_RESOURCE_NAMES = ["AGENTS.md", "agents", "bin", "prompts", "skills", "themes"];
+
+function nestedPiRuntimeRoot(cwd: string, config: SandboxConfig): string | undefined {
+  const writable = [
+    ...filesystemRootsWithAccess(config, (access) => access === "write"),
+    ...config.extraWritePaths,
+  ];
+  const candidates = unique([join(homedir(), "sandbox"), cwd, ...writable]);
+  return candidates.find((path) => {
+    try {
+      return lstatSync(path).isDirectory() && hasBashWriteAccess(resolvePath(path, "/"), config, []);
+    } catch {
+      return false;
+    }
+  });
+}
+
+/**
+ * Pi takes an exclusive settings lock even in --no-session mode. Keep the real
+ * agent directory read-only and give nested Pi invocations an ephemeral copy
+ * for locks and runtime state instead.
+ */
+function createNestedPiAgentDir(cwd: string, config: SandboxConfig): string {
+  const root = nestedPiRuntimeRoot(cwd, config);
+  if (!root) throw new Error("Sandbox cannot dispatch nested Pi: no writable runtime root is configured");
+
+  const source = getAgentDir();
+  const target = mkdtempSync(join(root, ".pi-nested-agent-"));
+  try {
+    for (const entry of readdirSync(source, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith(".json") || entry.name.endsWith(".lock")) continue;
+      const sourcePath = join(source, entry.name);
+      const targetPath = join(target, entry.name);
+      if (entry.name === "settings.json") {
+        const settings = JSON.parse(readFileSync(sourcePath, "utf8")) as Record<string, unknown>;
+        // The outer bwrap remains the security boundary. Avoid cloning and
+        // executing extension packages again for every ephemeral child.
+        writeFileSync(targetPath, JSON.stringify({ ...settings, packages: [], extensions: [] }, null, 2), {
+          encoding: "utf8",
+          mode: 0o600,
+        });
+      } else {
+        copyFileSync(sourcePath, targetPath);
+      }
+    }
+
+    for (const name of NESTED_PI_RESOURCE_NAMES) {
+      const sourcePath = join(source, name);
+      if (existsSync(sourcePath)) symlinkSync(sourcePath, join(target, name));
+    }
+    return target;
+  } catch (error) {
+    rmSync(target, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 function findTrustedBwrap(writableRoots: string[]): string | undefined {
@@ -931,13 +1012,14 @@ function createSandboxedBashOps(
     async exec(command, cwd, { onData, signal, timeout }) {
       if (!existsSync(cwd)) throw new Error(`Working directory does not exist: ${cwd}`);
       const sshAuthSock = config.sshAgent ? resolveSshAuthSock() : undefined;
+      const nestedPiAgentDir = commandInvokesPi(command) ? createNestedPiAgentDir(cwd, config) : undefined;
       const args = buildBwrapArgs(command, cwd, config, approvedMounts, sshAuthSock);
 
       return new Promise((resolvePromise, reject) => {
         const child = spawn(executable, args, {
           cwd,
           detached: true,
-          env: sandboxEnv(config, sshAuthSock),
+          env: sandboxEnv(config, sshAuthSock, nestedPiAgentDir),
           stdio: ["ignore", "pipe", "pipe"],
         });
         let timedOut = false;
@@ -956,6 +1038,7 @@ function createSandboxedBashOps(
         const cleanup = () => {
           if (timer) clearTimeout(timer);
           signal?.removeEventListener("abort", onAbort);
+          if (nestedPiAgentDir) rmSync(nestedPiAgentDir, { recursive: true, force: true });
         };
 
         if (timeout !== undefined && timeout > 0) {

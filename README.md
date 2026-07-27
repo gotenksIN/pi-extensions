@@ -18,6 +18,7 @@ A Linux `bubblewrap` sandbox extension for Pi bash and file tools.
 - Mounts other protected project paths read-only by default, including `.pi`, `.agents`, `.codex`, and `.env`.
 - Makes user-installed executables under `~/.local/bin` available read-only.
 - Makes Pi installation under `~/.local/lib/pi` available read-only.
+- Supports nested `pi`/subagent dispatch with an ephemeral writable agent directory while keeping the canonical `~/.pi` read-only.
 - Keeps common tool config under `~/.config` read-only by default.
 - Keeps Git user config under `~/.gitconfig` read-only by default.
 - Supports SSH/Git pushes via a mounted SSH agent socket without mounting private keys.
@@ -144,6 +145,17 @@ The sandbox intentionally does **not** mount private SSH keys. Instead, when
 sets `GIT_SSH_COMMAND` to use the agent plus `~/.ssh/config`. This lets
 `git push` authenticate through your host SSH agent/keychain without exposing private
 key files to sandboxed bash or file tools.
+
+### Nested Pi and subagents
+
+The canonical `~/.pi` remains read-only because it contains credentials,
+settings, executable extensions, prompts, and session history. When a sandboxed
+bash command invokes `pi`, the extension creates an ephemeral writable agent
+directory under an approved writable root and sets `PI_CODING_AGENT_DIR` for
+that command. It copies JSON configuration, links read-only user resources, and
+removes package/extension discovery from the copied settings. The child remains
+inside the outer bubblewrap sandbox, and the ephemeral directory is deleted when
+the command exits.
 
 Default:
 
