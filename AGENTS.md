@@ -5,7 +5,7 @@
 - Keep responses concise, direct, and technical.
 - Prefer small, focused changes over broad refactors unless the user asks otherwise.
 - Verify important changes before concluding when a practical check exists.
-- Do not use LaTeX math markup (such as `$\rightarrow$`, `\rightarrow`, or math delimiters) in output formatting. Use standard Unicode characters (e.g., `→`, `⇒`) or plain text so text renders correctly in TUI environments.
+- NEVER use LaTeX math syntax, math mode, dollar-sign delimiters (`$...$`, `$$...$$`), or LaTeX escape sequences (such as `\rightarrow`, `\Rightarrow`, `\times`, `\pm`, `\circ`, `\approx`, etc.) anywhere in output formatting or text. Standard TUI environments do not render LaTeX math markup. Use standard Unicode characters (e.g., `→`, `⇒`, `×`, `±`, `°`, `≈`) or plain text instead.
 
 ## Tooling Preferences
 
