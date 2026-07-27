@@ -114,6 +114,7 @@ A Linux `bubblewrap` sandbox extension for Pi bash and file tools.
 - Makes host `/tmp` readable and writable by default so temporary files (such as pasted TUI clipboard screenshots) are auto-approved.
 - Automatically blocks bash commands attempting output suppression using `/dev/null`.
 - Supports memory-only session grants for one-off file/bash access.
+- Makes explicit user-approved write grants override default read-only rules; `none` remains a hard denial.
 - Network access is normal by default.
 - Optional paranoid network isolation via `isolateNetwork: true`.
 - Uses PID/user namespace isolation, a fresh `/proc`, and drops capabilities inside bwrap.

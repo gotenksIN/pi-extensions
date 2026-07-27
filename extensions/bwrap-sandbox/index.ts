@@ -891,6 +891,7 @@ function hasNoneDirectoryAncestor(path: string, entries: Array<[string, FileAcce
 function pushFilesystemPolicy(
   args: string[],
   config: SandboxConfig,
+  approvedWritePaths: string[],
   beforeReadOnlyRemount?: () => void,
 ): void {
   const entries = Object.entries(config.filesystem).sort(([left], [right]) => left.length - right.length);
@@ -899,7 +900,17 @@ function pushFilesystemPolicy(
   for (const [path, access] of entries) {
     if (!existsSync(path)) continue;
     if (access === "read") {
-      args.push("--ro-bind", path, path);
+      const overriddenByGrant = approvedWritePaths.some((grant) => isPathWithin(path, grant));
+      const containsGrantedPath = approvedWritePaths.some((grant) => grant !== path && isPathWithin(grant, path));
+      if (overriddenByGrant) continue;
+      if (containsGrantedPath) {
+        // Keep the parent writable during mount setup so an approved writable
+        // child can be rebound before the parent is remounted read-only.
+        args.push("--bind", path, path);
+        lateReadOnlyRemounts.push(path);
+      } else {
+        args.push("--ro-bind", path, path);
+      }
     } else if (access === "write") {
       pushWritableMounts(args, [path], config);
     } else if (lstatSync(path).isDirectory()) {
@@ -912,7 +923,7 @@ function pushFilesystemPolicy(
   }
 
   beforeReadOnlyRemount?.();
-  for (const path of lateReadOnlyRemounts.sort((left, right) => right.length - left.length)) {
+  for (const path of unique(lateReadOnlyRemounts).sort((left, right) => right.length - left.length)) {
     args.push("--remount-ro", path);
   }
 }
@@ -952,7 +963,12 @@ function pushReadOnlyMountWithScaffold(args: string[], path: string, mountedRoot
   args.push("--ro-bind", path, path);
 }
 
-function pushGitMetadataMounts(args: string[], cwd: string, config: SandboxConfig): void {
+function pushGitMetadataMounts(
+  args: string[],
+  cwd: string,
+  config: SandboxConfig,
+  approvedWritePaths: string[],
+): void {
   const mountedRoots = [
     ...config.systemPaths,
     ...config.extraReadPaths,
@@ -960,6 +976,7 @@ function pushGitMetadataMounts(args: string[], cwd: string, config: SandboxConfi
     ...Object.keys(config.filesystem),
   ];
   for (const path of gitMetadataPaths(cwd, config)) {
+    if (approvedWritePaths.some((grant) => isPathWithin(path, grant))) continue;
     pushReadOnlyMountWithScaffold(args, path, mountedRoots);
   }
 }
@@ -984,18 +1001,22 @@ function buildBwrapArgs(
   pushMounts(args, "--ro-bind", config.extraReadPaths);
   pushWritableMounts(args, config.extraWritePaths, config);
 
-  // Structured entries are applied broad-to-narrow so specific rules win.
-  pushFilesystemPolicy(args, config, () => pushSshAgentMount(args, config, sshAuthSock));
-
-  // Git worktrees can keep their actual git/common dirs outside the project.
-  // Mount those metadata dirs read-only after broad writable roots so git can
-  // inspect them without making hooks/config writable.
-  pushGitMetadataMounts(args, cwd, config);
-
-  // Explicit one-time/session approval has final precedence.
-  pushMounts(args, "--ro-bind", approvedMounts.filter((mount) => !mount.writable).map((mount) => mount.path));
+  const approvedReadPaths = approvedMounts.filter((mount) => !mount.writable).map((mount) => mount.path);
   const approvedWritePaths = approvedMounts.filter((mount) => mount.writable).map((mount) => mount.path);
-  pushWritableMounts(args, approvedWritePaths, config, approvedWritePaths);
+
+  // Structured entries are applied broad-to-narrow so specific rules win.
+  // Explicit grants are mounted before read-only parents are remounted, making
+  // user approval superior to default read-only policy while preserving none.
+  pushFilesystemPolicy(args, config, approvedWritePaths, () => {
+    pushSshAgentMount(args, config, sshAuthSock);
+
+    // Git worktrees can keep their actual git/common dirs outside the project.
+    // Keep metadata read-only unless an explicit write grant covers it.
+    pushGitMetadataMounts(args, cwd, config, approvedWritePaths);
+
+    pushMounts(args, "--ro-bind", approvedReadPaths);
+    pushWritableMounts(args, approvedWritePaths, config, approvedWritePaths);
+  });
 
   args.push("--dev", "/dev", "--proc", "/proc");
   const tmpConfigured =
