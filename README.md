@@ -11,6 +11,48 @@ pi install git:git@github.com:gotenksIN/pi-extensions.git
 pi install git:git@github.com:otahontas/pi-coding-agent-catppuccin.git
 ```
 
+Pi runs `npm install` for Git packages containing `package.json`. The
+standalone Pi binary does not include a JavaScript package manager. If `node`
+and `npm` are unavailable, temporarily install the smaller Bun runtime without
+requiring Node.js:
+
+```bash
+(
+  set -e
+
+  work="$HOME/sandbox/bun-install"
+  rm -rf "$work"
+  mkdir -p "$work" "$HOME/.local/bin"
+  cd "$work"
+
+  gh release download \
+    --repo oven-sh/bun \
+    --pattern 'bun-linux-x64.zip' \
+    --pattern 'SHASUMS256.txt'
+
+  sha256sum --check --ignore-missing SHASUMS256.txt
+  7z x bun-linux-x64.zip
+
+  # Use the absolute path because some Zsh setups alias `install` to Nala.
+  /usr/bin/install -Dm755 \
+    "$work/bun-linux-x64/bun" \
+    "$HOME/.local/bin/bun"
+
+  "$HOME/.local/bin/bun" --version
+  rm -rf "$work"
+)
+```
+
+If installing `pi-subagents` failed before Bun was available, install its
+production dependencies directly, then remove Bun because Pi's standalone
+runtime can load the installed modules without keeping the package manager:
+
+```bash
+cd ~/.pi/agent/git/github.com/tintinweb/pi-subagents
+~/.local/bin/bun install --production --ignore-scripts --no-save
+rm -f ~/.local/bin/bun
+```
+
 Copy the tracked [`settings.json`](settings.json) into Pi's agent directory to
 reproduce this setup exactly:
 
