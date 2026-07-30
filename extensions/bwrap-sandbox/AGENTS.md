@@ -147,6 +147,9 @@ A later parent grant cannot remove that exact mount during the session.
 The approval broker serializes requests.
 A child session cannot approve its own request.
 A child request fails closed without an interactive parent owner.
+Render forwarded approval as a focused overlay so it remains visible above a
+child conversation viewer. Overlay state is a display control only. It must not
+grant access or affect validation.
 Lifecycle changes invalidate stale approval results.
 
 An explicit parent `--no-sandbox` flag is process-wide.

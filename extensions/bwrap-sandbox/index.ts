@@ -7,6 +7,7 @@ import {
   createWriteTool,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { selectApprovalOverlay } from "./approval-ui.ts";
 import { registerSandboxCommands } from "./commands.ts";
 import { authorizeDirectTool, isDirectFilesystemTool } from "./direct-gate.ts";
 import { sandboxDisableSource } from "./process-state.ts";
@@ -23,7 +24,7 @@ export default function sandboxExtension(pi: ExtensionAPI) {
     default: false,
   });
 
-  const session = createSandboxSession();
+  const session = createSandboxSession(selectApprovalOverlay);
 
   const initialRead = createReadTool(process.cwd());
   pi.registerTool({

@@ -254,6 +254,9 @@ combined prompt. The user can allow one operation or add a session grant.
 A subagent cannot approve its own request.
 A subagent request must use an interactive parent approval owner.
 Requests fail closed when no owner is available.
+A forwarded approval opens as a focused overlay above a child conversation
+viewer. The prompt remains readable without access to the other extension's
+private overlay lifecycle. Overlay state does not affect approval validation.
 
 ## Safety classifier
 
@@ -521,6 +524,7 @@ system.
 - `mount-plan.ts` creates deterministic mount operations.
 - `runtime.ts` owns trusted resources and Bubblewrap processes.
 - `approval.ts` owns the parent and subagent approval broker.
+- `approval-ui.ts` renders approval selection above other overlays.
 - `direct-gate.ts` identifies direct host filesystem tools.
 - `safety-policy.ts` owns classifier prompts, schemas, and fixed limits.
 - `safety-evidence.ts` owns bounded evidence and action digests.

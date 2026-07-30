@@ -240,6 +240,9 @@ Starting Pi with `--no-sandbox` disables the extension for the parent and all
 subagent sessions in that Pi process. A child session cannot silently restore
 the sandbox after the parent selected the CLI opt-out.
 
+A forwarded subagent approval opens as a focused overlay above conversation
+viewers, so the prompt remains readable without modifying the viewer extension.
+
 `/sandbox-test` is the single test command. Its lazy test bridge loads the
 Pi-native unit suite first and then runs the shell integration script through
 the active session runtime. Repeated command runs reuse module registration and

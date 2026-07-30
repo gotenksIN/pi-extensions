@@ -2,7 +2,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { BashOperations, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { CONFIG_DIR_NAME, getAgentDir } from "@earendil-works/pi-coding-agent";
-import { createApprovalChannel, type ApprovalChannel } from "./approval.ts";
+import { createApprovalChannel, type ApprovalChannel, type ApprovalSelector } from "./approval.ts";
 import { sshCapabilityStatus } from "./capabilities.ts";
 import { loadConfig } from "./config.ts";
 import {
@@ -118,13 +118,17 @@ function unavailableOperations(reason: string): BashOperations {
 
 class Session implements SandboxSession {
   private readonly home = homedir();
-  private readonly approval: ApprovalChannel = createApprovalChannel();
+  private readonly approval: ApprovalChannel;
   private safetyGate: SafetyGate | undefined;
   private current: LifecycleState = {
     kind: "error",
     reason: "session has not started",
     projectCwd: process.cwd(),
   };
+
+  constructor(approvalSelector?: ApprovalSelector) {
+    this.approval = createApprovalChannel(approvalSelector);
+  }
 
   state(): SandboxState { return this.current.kind; }
   reason(): string { return this.current.reason; }
@@ -477,6 +481,6 @@ class Session implements SandboxSession {
   }
 }
 
-export function createSandboxSession(): SandboxSession {
-  return new Session();
+export function createSandboxSession(approvalSelector?: ApprovalSelector): SandboxSession {
+  return new Session(approvalSelector);
 }

@@ -17,6 +17,23 @@ export interface ApprovalChannel {
 
 const BROKER_KEY = Symbol.for("gotenksIN.pi-extensions.bwrap-sandbox.approval-broker.v3");
 
+export type ApprovalSelector = (
+  ctx: ExtensionContext,
+  message: string,
+  choices: string[],
+) => Promise<string | undefined>;
+
+export function selectApproval(
+  ctx: ExtensionContext,
+  message: string,
+  choices: string[],
+  ownerSelector?: ApprovalSelector,
+): Promise<string | undefined> {
+  return ownerSelector
+    ? ownerSelector(ctx, message, choices)
+    : ctx.ui.select(message, choices);
+}
+
 function broker(): ApprovalBroker {
   const globals = globalThis as typeof globalThis & { [BROKER_KEY]?: ApprovalBroker };
   globals[BROKER_KEY] ??= { tail: Promise.resolve() };
@@ -24,7 +41,7 @@ function broker(): ApprovalBroker {
 }
 
 /** Create an opaque session endpoint for the shared parent/subagent broker. */
-export function createApprovalChannel(): ApprovalChannel {
+export function createApprovalChannel(ownerSelector?: ApprovalSelector): ApprovalChannel {
   const token = Symbol("bwrap-sandbox-session");
   let sessionLabel = "unknown";
   let generation = 0;
@@ -53,7 +70,7 @@ export function createApprovalChannel(): ApprovalChannel {
       if (ctx.hasUI && (!shared.owner || shared.owner === token)) {
         shared.owner = token;
         shared.ownerSession = sessionLabel;
-        shared.select = (message, choices) => ctx.ui.select(message, choices);
+        shared.select = (message, choices) => selectApproval(ctx, message, choices, ownerSelector);
         shared.notify = (message) => ctx.ui.notify(message, "warning");
         isOwner = true;
       }
