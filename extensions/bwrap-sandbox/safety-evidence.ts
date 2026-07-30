@@ -8,12 +8,12 @@ export interface SafetyAction {
 }
 
 export interface SafetyEvidence {
-  readonly version: 1;
+  readonly version: 2;
   readonly userMessages: readonly string[];
   readonly omittedUserMessageCount: number;
-  readonly priorActions: readonly SafetyAction[];
+  readonly completedPriorActions: readonly SafetyAction[];
   readonly omittedPriorActionCount: number;
-  readonly action: SafetyAction;
+  readonly proposedAction: SafetyAction;
 }
 
 export interface EvidenceSource {
@@ -152,12 +152,12 @@ export function buildSafetyEvidence(source: EvidenceSource): { evidence: SafetyE
     }, 0) }
     : collectPriorActions(source);
   const evidence: SafetyEvidence = {
-    version: 1,
+    version: 2,
     userMessages: users.messages,
     omittedUserMessageCount: users.omitted,
-    priorActions: prior.actions,
+    completedPriorActions: prior.actions,
     omittedPriorActionCount: prior.omitted,
-    action,
+    proposedAction: action,
   };
   const serialized = canonicalJson(evidence);
   if (byteLength(serialized) > EVIDENCE_LIMITS.totalBytes) {

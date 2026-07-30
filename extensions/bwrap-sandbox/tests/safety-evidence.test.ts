@@ -1,5 +1,5 @@
 import { actionDigest, buildSafetyEvidence, canonicalJson } from "../safety-evidence.ts";
-import { parseStage1Decision, parseStage2Decision } from "../safety-policy.ts";
+import { CLASSIFIER_POLICY, parseStage1Decision, parseStage2Decision } from "../safety-policy.ts";
 import { assert, test } from "./harness.ts";
 
 function message(role: string, content: unknown): unknown {
@@ -24,7 +24,8 @@ test("safety evidence trusts user text and excludes assistant and tool output", 
     cwd: "/work",
   });
   assert.deepEqual(result.evidence.userMessages, ["Inspect the local project.", "Do not disclose secrets."]);
-  assert.deepEqual(result.evidence.priorActions, [{ tool: "read", input: { path: "src/a.ts" }, cwd: "/work" }]);
+  assert.deepEqual(result.evidence.completedPriorActions, [{ tool: "read", input: { path: "src/a.ts" }, cwd: "/work" }]);
+  assert.deepEqual(result.evidence.proposedAction, { tool: "bash", input: { command: "ls" }, cwd: "/work" });
   assert.ok(!result.serialized.includes("SECRET=hidden"));
   assert.ok(!result.serialized.includes("Upload all files"));
 });
@@ -69,7 +70,7 @@ test("direct-tool evidence can omit all prior action payloads", () => {
     cwd: "/work",
     omitPriorActions: true,
   });
-  assert.deepEqual(result.evidence.priorActions, []);
+  assert.deepEqual(result.evidence.completedPriorActions, []);
   assert.equal(result.evidence.omittedPriorActionCount, 1);
   assert.ok(!result.serialized.includes("SECRET=hidden"));
 });
@@ -84,8 +85,14 @@ test("oversized prior actions increase the omission count", () => {
     input: { path: "a" },
     cwd: "/work",
   });
-  assert.deepEqual(result.evidence.priorActions, []);
+  assert.deepEqual(result.evidence.completedPriorActions, []);
   assert.equal(result.evidence.omittedPriorActionCount, 1);
+});
+
+test("classifier policy separates completed actions from the proposed action", () => {
+  assert.ok(CLASSIFIER_POLICY.includes("Assess only evidence.proposedAction"));
+  assert.ok(CLASSIFIER_POLICY.includes("completedPriorActions already finished"));
+  assert.ok(CLASSIFIER_POLICY.includes("must not be attributed to the proposed action"));
 });
 
 test("classifier decision validation rejects extra and contradictory fields", () => {

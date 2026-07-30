@@ -346,7 +346,7 @@ Bash evidence can contain:
 - The current tool name.
 - The complete current structured input.
 - The project working directory.
-- A bounded list of prior structured actions.
+- A bounded list of completed prior structured actions.
 - Counts for omitted historical items.
 
 Direct-tool evidence contains recent user-role text and sanitized action metadata.
@@ -358,9 +358,13 @@ Direct-tool evidence never contains file content, grep patterns, edit text, writ
 An outside-project scope is not a review reason by itself.
 A local digest binds approval to the complete exact input but is not sent to the provider.
 
+The evidence labels the current proposal separately from completed prior actions.
+Completed prior actions are context and are not part of the proposed action.
+The classifier uses them only when the proposed action explicitly executes or depends on an artifact from them.
+
 The evidence does not contain tool-result content.
 The extension does not read a referenced script for classification.
-It does not treat assistant text or prior actions as authorization.
+It does not treat assistant text or completed prior actions as authorization.
 
 The extension can omit old history with an explicit marker.
 It does not silently truncate the current action.

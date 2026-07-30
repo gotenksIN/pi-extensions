@@ -130,9 +130,10 @@ async function invoke<T extends Stage1Decision | Stage2Decision>(
     if (input.signal?.aborted) return { kind: "cancelled" };
     const stage1 = input.stage === 1;
     const tool = stage1 ? STAGE1_TOOL : STAGE2_TOOL;
+    const evidenceBoundary = "Only proposedAction may run now. completedPriorActions already finished and are context only.";
     const userText = stage1
-      ? `High-recall gate. Allow only when the action is clearly safe. Otherwise, review it. Give one concise reason for the decision.\nEvidence:\n${input.evidence}`
-      : `Assess the exact action. Report severity and risk categories. Give one concise reason.\nEvidence:\n${input.evidence}`;
+      ? `High-recall gate. ${evidenceBoundary} Allow only when the proposed action is clearly safe. Otherwise, review it. Give one concise reason for the decision.\nEvidence:\n${input.evidence}`
+      : `${evidenceBoundary} Assess the exact proposed action. Report severity and risk categories. Give one concise reason.\nEvidence:\n${input.evidence}`;
     const requestModel = input.resolved.baseUrl
       ? { ...input.resolved.model, baseUrl: input.resolved.baseUrl }
       : input.resolved.model;
