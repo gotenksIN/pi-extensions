@@ -92,6 +92,11 @@ They still run through Bubblewrap.
 The `/sandbox-test` command also bypasses classifier inference.
 This prevents paid calls during tests.
 
+Starting Pi with `--no-sandbox` disables this extension for the parent session
+and all subagent sessions in the same Pi process. Subagents do not receive a
+separate active sandbox when the parent explicitly selected this CLI opt-out.
+The process-wide marker is monotonic and clears only when the Pi process exits.
+
 ## Filesystem policy
 
 The extension starts with a read-only bind of host `/`.

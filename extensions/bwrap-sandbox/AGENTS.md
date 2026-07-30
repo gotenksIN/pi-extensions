@@ -149,6 +149,12 @@ A child session cannot approve its own request.
 A child request fails closed without an interactive parent owner.
 Lifecycle changes invalidate stale approval results.
 
+An explicit parent `--no-sandbox` flag is process-wide.
+Propagate it to subagent sessions through opaque `globalThis` state with a
+versioned `Symbol.for` key.
+Do not let a child session re-enable the sandbox after the parent CLI opt-out.
+Keep this marker monotonic until process exit.
+
 ## SSH capability invariants
 
 `sshAgent` is global-only and defaults to `true`.

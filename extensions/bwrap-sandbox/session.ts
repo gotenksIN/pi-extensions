@@ -15,6 +15,7 @@ import {
   type GrantScope,
 } from "./grants.ts";
 import { buildDirectSecretAssessment, isSecretClassifiedTool } from "./direct-secret-evidence.ts";
+import type { SandboxDisableSource } from "./process-state.ts";
 import { effectiveAccess, resolveExistingPath } from "./policy.ts";
 import { BubblewrapRuntime, findTrustedBwrap, probeBwrap } from "./runtime.ts";
 import { SafetyGate } from "./safety-gate.ts";
@@ -80,7 +81,7 @@ export interface ManualTestExecution {
 }
 
 export interface SandboxSession {
-  start(ctx: ExtensionContext, explicitlyDisabled: boolean): Promise<void>;
+  start(ctx: ExtensionContext, disableSource: SandboxDisableSource): Promise<void>;
   shutdown(ctx: ExtensionContext): Promise<void>;
   state(): SandboxState;
   reason(): string;
@@ -129,7 +130,7 @@ class Session implements SandboxSession {
   reason(): string { return this.current.reason; }
   projectCwd(): string { return this.current.projectCwd; }
 
-  async start(ctx: ExtensionContext, explicitlyDisabled: boolean): Promise<void> {
+  async start(ctx: ExtensionContext, disableSource: SandboxDisableSource): Promise<void> {
     const previous = this.current.kind === "ready" ? this.current.runtime : undefined;
     this.current = { kind: "error", reason: "initializing", projectCwd: ctx.cwd };
     this.approval.detach();
@@ -153,10 +154,12 @@ class Session implements SandboxSession {
         ctx.isProjectTrusted(),
       );
 
-      if (explicitlyDisabled || !config.enabled) {
-        const reason = explicitlyDisabled
+      if (disableSource !== "none" || !config.enabled) {
+        const reason = disableSource === "cli"
           ? "explicitly disabled by --no-sandbox"
-          : "explicitly disabled by configuration";
+          : disableSource === "parent-cli"
+            ? "disabled because the parent Pi process uses --no-sandbox"
+            : "explicitly disabled by configuration";
         this.current = { kind: "disabled", reason, projectCwd, config };
         ctx.ui.setStatus("sandbox", undefined);
         ctx.ui.notify(`Sandbox ${reason}`, "warning");

@@ -236,6 +236,10 @@ pairs, and the last sanitized classifier outcome. Direct `read`, `grep`,
 secret classification. `find` and `ls` continue to use only deterministic path
 policy. Direct writes retain user approval when required.
 
+Starting Pi with `--no-sandbox` disables the extension for the parent and all
+subagent sessions in that Pi process. A child session cannot silently restore
+the sandbox after the parent selected the CLI opt-out.
+
 `/sandbox-test` is the single test command. Its lazy test bridge loads the
 Pi-native unit suite first and then runs the shell integration script through
 the active session runtime. Repeated command runs reuse module registration and

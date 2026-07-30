@@ -9,6 +9,7 @@ import {
 import { Type } from "typebox";
 import { registerSandboxCommands } from "./commands.ts";
 import { authorizeDirectTool, isDirectFilesystemTool } from "./direct-gate.ts";
+import { sandboxDisableSource } from "./process-state.ts";
 import { createSandboxSession } from "./session.ts";
 
 function errorMessage(error: unknown): string {
@@ -105,7 +106,8 @@ export default function sandboxExtension(pi: ExtensionAPI) {
   });
 
   pi.on("session_start", async (_event, ctx) => {
-    await session.start(ctx, pi.getFlag("no-sandbox") as boolean);
+    const explicit = pi.getFlag("no-sandbox") as boolean;
+    await session.start(ctx, sandboxDisableSource(explicit));
   });
 
   pi.on("session_shutdown", async (_event, ctx) => {

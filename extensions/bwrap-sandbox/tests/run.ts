@@ -8,6 +8,7 @@ import "./direct-secret-evidence.test.ts";
 import "./grants.test.ts";
 import "./mount-plan.test.ts";
 import "./policy.test.ts";
+import "./process-state.test.ts";
 import "./registration.test.ts";
 import "./safety-evidence.test.ts";
 import "./safety-gate.test.ts";
