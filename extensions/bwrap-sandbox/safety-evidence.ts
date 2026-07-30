@@ -22,6 +22,7 @@ export interface EvidenceSource {
   readonly toolName: string;
   readonly input: unknown;
   readonly cwd: string;
+  readonly omitPriorActions?: boolean;
 }
 
 function byteLength(value: string): number {
@@ -144,7 +145,12 @@ export function buildSafetyEvidence(source: EvidenceSource): { evidence: SafetyE
     throw new Error("The proposed action is too large for complete safety review");
   }
   const users = collectUserMessages(source.branch);
-  const prior = collectPriorActions(source);
+  const prior = source.omitPriorActions
+    ? { actions: [], omitted: source.branch.reduce((count, entry) => {
+      const message = entryMessage(entry);
+      return count + (message ? toolCalls(message).filter((call) => call.id !== source.toolCallId).length : 0);
+    }, 0) }
+    : collectPriorActions(source);
   const evidence: SafetyEvidence = {
     version: 1,
     userMessages: users.messages,

@@ -1,10 +1,15 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { createBashTool } from "@earendil-works/pi-coding-agent";
+import {
+  createBashTool,
+  createEditTool,
+  createGrepTool,
+  createReadTool,
+  createWriteTool,
+} from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { registerSandboxCommands } from "./commands.ts";
 import { authorizeDirectTool, isDirectFilesystemTool } from "./direct-gate.ts";
 import { createSandboxSession } from "./session.ts";
-import { requiresSafetyClassification } from "./safety-gate.ts";
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -19,12 +24,48 @@ export default function sandboxExtension(pi: ExtensionAPI) {
 
   const session = createSandboxSession();
 
+  const initialRead = createReadTool(process.cwd());
+  pi.registerTool({
+    ...initialRead,
+    async execute(id, params, signal, onUpdate) {
+      if (session.state() === "ready") session.consumeSafetyPermit(id, "read", params);
+      return createReadTool(session.projectCwd()).execute(id, params, signal, onUpdate);
+    },
+  });
+
+  const initialGrep = createGrepTool(process.cwd());
+  pi.registerTool({
+    ...initialGrep,
+    async execute(id, params, signal, onUpdate) {
+      if (session.state() === "ready") session.consumeSafetyPermit(id, "grep", params);
+      return createGrepTool(session.projectCwd()).execute(id, params, signal, onUpdate);
+    },
+  });
+
+  const initialWrite = createWriteTool(process.cwd());
+  pi.registerTool({
+    ...initialWrite,
+    async execute(id, params, signal, onUpdate) {
+      if (session.state() === "ready") session.consumeSafetyPermit(id, "write", params);
+      return createWriteTool(session.projectCwd()).execute(id, params, signal, onUpdate);
+    },
+  });
+
+  const initialEdit = createEditTool(process.cwd());
+  pi.registerTool({
+    ...initialEdit,
+    async execute(id, params, signal, onUpdate) {
+      if (session.state() === "ready") session.consumeSafetyPermit(id, "edit", params);
+      return createEditTool(session.projectCwd()).execute(id, params, signal, onUpdate);
+    },
+  });
+
   pi.registerTool({
     ...createBashTool(process.cwd()),
     label: "bash (Linux Bubblewrap)",
     async execute(id, params, signal, onUpdate) {
       const cwd = session.projectCwd();
-      if (session.state() === "ready") session.consumeBashPermit(id, params);
+      if (session.state() === "ready") session.consumeSafetyPermit(id, "bash", params);
       const bash = session.state() === "disabled"
         ? createBashTool(cwd)
         : createBashTool(cwd, { operations: session.operations() });
@@ -83,7 +124,7 @@ export default function sandboxExtension(pi: ExtensionAPI) {
     }
 
     try {
-      if (requiresSafetyClassification(event.toolName)) {
+      if (event.toolName === "bash") {
         await session.authorizeBash(event.toolCallId, event.input, ctx);
         return undefined;
       }
@@ -92,7 +133,7 @@ export default function sandboxExtension(pi: ExtensionAPI) {
       const rawPath = typeof input.path === "string" && input.path.length > 0
         ? input.path
         : session.projectCwd();
-      await authorizeDirectTool(event.toolName, rawPath, session);
+      await authorizeDirectTool(event.toolCallId, event.toolName, rawPath, event.input, session, ctx);
       return undefined;
     } catch (error) {
       return { block: true, reason: errorMessage(error) };

@@ -58,6 +58,22 @@ test("historical safety evidence is bounded with omission counts", () => {
   assert.equal(result.evidence.userMessages[0], "message-4");
 });
 
+test("direct-tool evidence can omit all prior action payloads", () => {
+  const result = buildSafetyEvidence({
+    branch: [message("assistant", [{
+      type: "toolCall", id: "old", name: "write", arguments: { path: "a", content: "SECRET=hidden" },
+    }])],
+    toolCallId: "current",
+    toolName: "read",
+    input: { domain: "direct-project-secret-access", target: { path: "a" } },
+    cwd: "/work",
+    omitPriorActions: true,
+  });
+  assert.deepEqual(result.evidence.priorActions, []);
+  assert.equal(result.evidence.omittedPriorActionCount, 1);
+  assert.ok(!result.serialized.includes("SECRET=hidden"));
+});
+
 test("oversized prior actions increase the omission count", () => {
   const result = buildSafetyEvidence({
     branch: [message("assistant", [{

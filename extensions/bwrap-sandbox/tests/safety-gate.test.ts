@@ -56,25 +56,40 @@ function request(input: unknown = { command: "ls" }) {
   };
 }
 
-test("only model-generated Bash requires safety classification", async () => {
-  assert.equal(requiresSafetyClassification("bash"), true);
-  for (const tool of ["read", "write", "edit", "grep", "find", "ls", "sandbox_access", "Agent"]) {
+test("Bash and content-access direct tools require safety classification", async () => {
+  for (const tool of ["bash", "read", "write", "edit", "grep"]) {
+    assert.equal(requiresSafetyClassification(tool), true);
+  }
+  for (const tool of ["find", "ls", "sandbox_access", "Agent"]) {
     assert.equal(requiresSafetyClassification(tool), false);
   }
 
-  let providerUsed = false;
+  let providerCalls = 0;
+  const providerRequests: string[] = [];
   const source = registry();
+  const provider = source.getProvider("test")!;
   source.getProvider = () => ({
-    streamSimple() {
-      providerUsed = true;
-      throw new Error("direct tools must not use the classifier");
+    streamSimple(model, context, options) {
+      providerCalls += 1;
+      providerRequests.push(JSON.stringify(context));
+      return provider.streamSimple(model, context, options);
     },
   });
   const gate = new SafetyGate(config(), source);
   await gate.start();
-  const result = await gate.authorize({ ...request({ path: "a" }), toolName: "read" });
+  const input = { path: "a", content: "must-not-be-provider-evidence" };
+  const result = await gate.authorize({
+    ...request(input),
+    toolName: "write",
+    classifierInput: { domain: "direct-project-secret-access", target: { path: "a" } },
+    classifierCwd: ":project",
+    omitPriorActions: true,
+  });
   assert.equal(result.allowed, true);
-  assert.equal(providerUsed, false);
+  assert.equal(providerCalls, 2);
+  assert.ok(providerRequests.every((value) => !value.includes("must-not-be-provider-evidence")));
+  assert.ok(providerRequests.every((value) => !value.includes("/work")));
+  gate.consumePermit("call-1", "write", input, "/work");
 });
 
 test("safety gate creates and consumes one single-use execution permit", async () => {
@@ -101,7 +116,21 @@ test("safety permit rejects changed arguments and expires on lifecycle change", 
   assert.throws(() => expired.consumePermit("call-1", "bash", { command: "ls" }, "/work"), /missing/);
 });
 
-test("human review approval creates one single-use Bash permit", async () => {
+test("direct-tool indicators remain classifier evidence instead of local vetoes", async () => {
+  const gate = new SafetyGate(config(), registry());
+  await gate.start();
+  const input = { path: ".env" };
+  const result = await gate.authorize({
+    ...request(input),
+    toolName: "read",
+    classifierInput: { target: { path: ".env", knownSecretPath: true } },
+    omitPriorActions: true,
+  });
+  assert.equal(result.allowed, true);
+  gate.consumePermit("call-1", "read", input, "/work");
+});
+
+test("human review approval creates one single-use permit for the exact tool", async () => {
   const gate = new SafetyGate(config(), registry());
   await gate.start();
   gate.approveBashOnce("reviewed", { command: "git status" }, "/work");
@@ -115,6 +144,13 @@ test("human review approval creates one single-use Bash permit", async () => {
   assert.throws(
     () => gate.consumePermit("changed", "bash", { command: "git push" }, "/work"),
     /does not match/,
+  );
+
+  gate.approveOnce("direct", "read", { path: ".env" }, "/work");
+  gate.consumePermit("direct", "read", { path: ".env" }, "/work");
+  assert.throws(
+    () => gate.consumePermit("direct", "read", { path: ".env" }, "/work"),
+    /missing/,
   );
 });
 

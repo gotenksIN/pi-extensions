@@ -3,10 +3,10 @@ import { PiClassifierStageInvoker, type ClassifierModelRegistry } from "./classi
 import { buildSafetyEvidence, actionDigest, type SafetyAction } from "./safety-evidence.ts";
 import type { ClassifierConfig } from "./types.ts";
 
-const PERMITTED_TOOL = "bash";
+const CLASSIFIED_TOOLS = new Set(["bash", "read", "grep", "write", "edit"]);
 
 export function requiresSafetyClassification(toolName: string): boolean {
-  return toolName === PERMITTED_TOOL;
+  return CLASSIFIED_TOOLS.has(toolName);
 }
 
 interface ExecutionPermit {
@@ -21,6 +21,9 @@ export interface SafetyAuthorizationRequest {
   readonly toolCallId: string;
   readonly toolName: string;
   readonly input: unknown;
+  readonly classifierInput?: unknown;
+  readonly classifierCwd?: string;
+  readonly omitPriorActions?: boolean;
   readonly cwd: string;
   readonly signal?: AbortSignal;
 }
@@ -54,21 +57,23 @@ export class SafetyGate {
     return this.classifier.status();
   }
 
+  private addPermit(toolCallId: string, toolName: string, input: unknown, cwd: string): void {
+    const action: SafetyAction = { tool: toolName, input, cwd };
+    this.permits.set(toolCallId, {
+      toolName,
+      cwd,
+      digest: actionDigest(action),
+      generation: this.generation,
+    });
+  }
+
   async authorize(request: SafetyAuthorizationRequest): Promise<SafetyAuthorizationResult> {
     if (!requiresSafetyClassification(request.toolName)) return { allowed: true };
     if (!this.classifier.status().enabled) {
-      if (request.toolName === PERMITTED_TOOL) {
-        const action: SafetyAction = { tool: request.toolName, input: request.input, cwd: request.cwd };
-        try {
-          this.permits.set(request.toolCallId, {
-            toolName: request.toolName,
-            cwd: request.cwd,
-            digest: actionDigest(action),
-            generation: this.generation,
-          });
-        } catch {
-          return { allowed: false, reason: "The final tool input cannot be serialized safely" };
-        }
+      try {
+        this.addPermit(request.toolCallId, request.toolName, request.input, request.cwd);
+      } catch {
+        return { allowed: false, reason: "The final tool input cannot be serialized safely" };
       }
       return { allowed: true };
     }
@@ -78,8 +83,9 @@ export class SafetyGate {
         branch: request.branch,
         toolCallId: request.toolCallId,
         toolName: request.toolName,
-        input: request.input,
-        cwd: request.cwd,
+        input: request.classifierInput ?? request.input,
+        cwd: request.classifierCwd ?? request.cwd,
+        omitPriorActions: request.omitPriorActions,
       });
     } catch (error) {
       return {
@@ -89,31 +95,32 @@ export class SafetyGate {
     }
     const result = await this.classifier.evaluate(built.serialized, request.signal);
     if (!result.allowed) return result;
-    if (request.toolName === PERMITTED_TOOL) {
-      this.permits.set(request.toolCallId, {
-        toolName: request.toolName,
-        cwd: request.cwd,
-        digest: built.digest,
-        generation: this.generation,
-      });
+    try {
+      this.addPermit(request.toolCallId, request.toolName, request.input, request.cwd);
+    } catch {
+      return { allowed: false, reason: "The final tool input cannot be serialized safely" };
     }
     return { allowed: true };
   }
 
-  approveBashOnce(toolCallId: string, input: unknown, cwd: string): void {
-    const action: SafetyAction = { tool: PERMITTED_TOOL, input, cwd };
+  approveOnce(toolCallId: string, toolName: string, input: unknown, cwd: string): void {
+    const action: SafetyAction = { tool: toolName, input, cwd };
     let digest: string;
     try {
       digest = actionDigest(action);
     } catch {
-      throw new Error("The Bash input cannot be serialized for single-use approval");
+      throw new Error(`The ${toolName} input cannot be serialized for single-use approval`);
     }
     this.permits.set(toolCallId, {
-      toolName: PERMITTED_TOOL,
+      toolName,
       cwd,
       digest,
       generation: this.generation,
     });
+  }
+
+  approveBashOnce(toolCallId: string, input: unknown, cwd: string): void {
+    this.approveOnce(toolCallId, "bash", input, cwd);
   }
 
   consumePermit(toolCallId: string, toolName: string, input: unknown, cwd: string): void {

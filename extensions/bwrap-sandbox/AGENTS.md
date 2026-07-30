@@ -257,18 +257,28 @@ Never store its reasoning.
 
 ## Tool-call and permit invariants
 
-Classify only model-generated `bash` tool calls.
-Do not send direct file tools or other extension tools to the classifier.
-Use deterministic path policy for `read`, `write`, `edit`, `grep`, `find`, and
-`ls`.
+Classify model-generated `bash`, `read`, `grep`, `write`, and `edit` tool calls.
+Use deterministic path policy before direct-tool classification.
+Use only deterministic path policy for `find` and `ls`.
 Keep the existing user approval flow for direct writes and `sandbox_access`.
+Combine secret review and direct write approval in one prompt when both apply.
+
+Direct-tool classifier evidence must never contain file content, grep patterns,
+edit text, write payloads, raw tool output, or absolute outside-project paths.
+Use project-relative path metadata, byte counts, and local boolean indicators.
+Omit prior action payloads from direct-tool evidence.
+Use a local exact-input digest only for permit integrity.
+Never send that digest as a substitute for secret semantics.
+Document that path-only detection cannot find all secrets in ordinary files.
 
 Pi tool-call input is mutable.
-For extension-owned `bash`, create a single-use permit after two classifier
-allows or one explicit human review approval.
+For extension-owned `bash`, `read`, `grep`, `write`, and `edit`, create a
+single-use permit after two classifier allows or one explicit human review
+approval.
 The permit must cover tool call ID, tool name, canonical final input, working
 directory, and lifecycle generation.
-The tool must consume and verify the permit immediately before execution.
+Wrap each classified built-in tool and consume the permit immediately before
+execution.
 Reject a missing, changed, expired, or reused permit.
 Clear all permits on session start and shutdown.
 
@@ -314,8 +324,11 @@ Classifier tests must cover:
 - No fallback after semantic failure.
 - Evidence trust boundaries and byte limits.
 - Stable digests and unsupported values.
-- Direct file tools bypassing classifier invocation.
-- Deterministic direct-path denial and user approval.
+- `find` and `ls` bypassing classifier invocation.
+- Direct secret evidence omitting content, queries, edit text, and payloads.
+- Deterministic direct-path denial before classifier invocation.
+- Classified read, grep, write, and edit automatic allows and human review.
+- Combined direct write and secret review without duplicate prompts.
 - Exact and parent grant scope selection.
 - Missing targets with existing parents.
 - Parent scope under `none` and protected runtime paths.
@@ -360,6 +373,7 @@ Do not add:
 - Provider-specific HTTP request construction.
 - Raw evidence or provider-response logging.
 - Repository-file ingestion into classifier evidence.
+- Raw direct read, grep, write, or edit content in classifier evidence.
 - Duplicated protected-path or capability checks.
 - Writable parent overlays.
 - Automatic widening from exact grant scope to parent scope.

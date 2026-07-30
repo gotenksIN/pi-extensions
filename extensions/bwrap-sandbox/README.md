@@ -8,7 +8,8 @@ It gives each Bash process a restricted mount namespace.
 
 The extension also checks Pi file tools in the host process.
 It asks the user before it adds a session write grant.
-It can use a two-stage model classifier before model-generated Bash calls.
+It can use a two-stage model classifier before model-generated Bash and direct
+content-access calls.
 The classifier is an additional check.
 It does not replace Bubblewrap or user approval.
 
@@ -24,7 +25,8 @@ The extension has these goals:
 - Optionally isolate the network.
 - Support one exact inherited SSH agent socket when the user enables it.
 - Check direct Pi file tools before they access the host.
-- Check model-generated Bash calls with two independent classifier stages.
+- Check model-generated Bash, read, grep, write, and edit calls with two
+  independent classifier stages.
 - Fail closed when a required security check cannot finish.
 
 The extension is not a confidentiality boundary.
@@ -69,13 +71,16 @@ A model-generated Bash call passes through these controls:
    the exact call.
 4. Bubblewrap builds the mount plan and starts the Bash process.
 
-A direct Pi file tool uses deterministic path policy instead of the classifier.
-A direct write also uses the existing user approval flow.
+Direct `read`, `grep`, `write`, and `edit` calls use deterministic path policy
+first. They then use privacy-safe project-secret classification.
+Direct `find` and `ls` calls use only deterministic path policy.
+A direct write also uses the existing write approval flow when required.
 A `sandbox_access` request uses deterministic grant validation and user approval.
 
 Each control is independent.
-Automatic execution requires two classifier `allow` decisions.
-A human review approval is single-use and applies to one exact Bash call.
+Automatic execution of a classified call requires two classifier `allow`
+decisions.
+A human review approval is single-use and applies to one exact tool call.
 A classifier decision or human review approval cannot create a mount, grant, or
 runtime capability.
 It cannot bypass a Bubblewrap error.
@@ -231,8 +236,16 @@ It is not OS containment.
 A check-to-use race is possible.
 Runtime capabilities do not widen direct-tool access.
 
+Model-generated `read`, `grep`, `write`, and `edit` calls also use the safety
+classifier. The classifier receives sanitized path and operation metadata.
+It never receives file content, a grep pattern, edit text, or a write payload.
+High-confidence local path and payload indicators become privacy-safe classifier
+evidence. The classifier decides whether they require review. An ordinary
+directory `grep` is not automatically treated as sensitive.
+
 A direct write outside current write policy uses the shared approval channel.
-The user can allow one operation or add a session grant.
+If safety review and write approval are both required, the extension uses one
+combined prompt. The user can allow one operation or add a session grant.
 A subagent cannot approve its own request.
 A subagent request must use an interactive parent approval owner.
 Requests fail closed when no owner is available.
@@ -245,10 +258,11 @@ The classifier looks for malicious or unauthorized model-generated Bash calls.
 Examples include secret disclosure, remote mutation, destructive changes,
 persistence, privilege escalation, and sandbox bypass attempts.
 
-The classifier checks only model-generated `bash` tool calls.
-Direct Pi file tools use deterministic path checks.
-Direct writes and `sandbox_access` also use user approval when required.
-The classifier does not check other extension tools.
+It also reviews model-generated `read`, `grep`, `write`, and `edit` calls for
+project-secret access. Deterministic policy runs before classification and can
+block the call without a provider request. Direct writes and `sandbox_access`
+also use user approval when required. The classifier does not check `find`,
+`ls`, user Bash, or other extension tools.
 
 ### Default model pairs
 
@@ -296,8 +310,8 @@ The first complete available pair becomes the preferred pair.
 If no complete pair is available, Bubblewrap still starts.
 The extension shows a warning.
 The warning tells the user to configure a complete pair.
-When the classifier is unavailable, model-generated Bash calls require human
-review.
+When the classifier is unavailable, model-generated Bash and classified direct
+tool calls require human review.
 User Bash and `/sandbox-test` continue to use Bubblewrap.
 
 The extension resolves availability again for each action.
@@ -307,21 +321,21 @@ A pair succeeds only when both stages return valid `allow` decisions.
 A valid `review` stops automatic approval.
 Invalid output, refusal, timeout, or exhausted technical failure also stops
 automatic approval.
-These results open the shared human review prompt for the exact Bash call.
+These results open the shared human review prompt for the exact classified call.
 Cancellation blocks the call without a new prompt.
 
 A technical provider or model failure can cause fallback to the next pair.
 The next pair always starts at Stage 1.
 The extension discards a partial approval from the failed pair.
 If all pairs fail, the call requires human review.
-A human allow creates one single-use execution permit.
+A human allow creates one single-use exact-call permit.
 It does not create a filesystem grant.
 A human denial blocks the call.
 
 ### Evidence
 
 Classifier evidence is bounded.
-It can contain:
+Bash evidence can contain:
 
 - Recent user-role text messages from the active branch.
 - The current tool name.
@@ -329,6 +343,16 @@ It can contain:
 - The project working directory.
 - A bounded list of prior structured actions.
 - Counts for omitted historical items.
+
+Direct-tool evidence contains recent user-role text and sanitized action
+metadata. It can contain the operation, project-relative target path, basename,
+extension, path kind, numeric read range, payload byte count, bounded-scan
+completeness, and local boolean indicators. It omits prior action payloads.
+
+Direct-tool evidence never contains file content, grep patterns, edit text,
+write payloads, absolute outside-project paths, or raw tool output.
+A local digest binds approval to the complete exact input but is not sent to the
+provider.
 
 The evidence does not contain tool-result content.
 The extension does not read a referenced script for classification.
@@ -338,10 +362,15 @@ The extension can omit old history with an explicit marker.
 It does not silently truncate the current action.
 An action that is too large or cannot be serialized is blocked locally.
 
-The action itself can contain a secret or proprietary value.
-Sending the action to a classifier provider can disclose that value.
+A Bash action itself can contain a secret or proprietary value.
+Sending that Bash action to a classifier provider can disclose that value.
 A generic redactor cannot preserve all security meaning.
 Users must consider this limit when they select classifier providers.
+
+Direct-tool classification does not inspect file content and cannot detect a
+secret in an ordinary path such as `notes.txt` with certainty. Filename and
+payload indicators reduce risk but do not provide a complete content secret
+scanner.
 
 ### Decisions
 
@@ -360,10 +389,12 @@ outcome categories.
 
 The `tool_call` input is mutable.
 A later extension can change it after this extension checks it.
-For extension-owned `bash`, the extension creates a single-use permit after two
-classifier allows or one explicit human review approval.
-The permit covers the tool call ID, tool name, final input, and working
-directory.
+For extension-owned `bash`, `read`, `grep`, `write`, and `edit`, the extension
+creates a single-use permit after two classifier allows or one explicit human
+review approval. The extension wraps these built-in tools so approval and
+execution have the same integrity check.
+The permit covers the tool call ID, tool name, final input, working directory,
+and lifecycle generation.
 The tool consumes the permit immediately before execution.
 A missing, changed, expired, or reused permit fails closed.
 
@@ -488,7 +519,9 @@ system.
 - `safety-evidence.ts` owns bounded evidence and action digests.
 - `classifier-provider.ts` owns Pi-native stage invocation.
 - `classifier.ts` owns pair selection and the fallback state machine.
-- `safety-gate.ts` owns Bash approval and single-use permits.
+- `direct-secret-evidence.ts` owns privacy-safe direct-tool metadata and local
+  secret indicators.
+- `safety-gate.ts` owns classified-call approval and single-use permits.
 - `session.ts` composes lifecycle, grants, runtime, and the safety gate.
 - `commands.ts` presents status and the native test command.
 - `index.ts` registers Pi surfaces and delegates work.
@@ -526,6 +559,8 @@ Do not add these designs:
 - Direct provider credential management.
 - Raw evidence or provider-response logging.
 - Repository-file ingestion for classifier evidence.
+- Raw read content, grep patterns, edit text, or write payloads in direct-tool
+  classifier evidence.
 - Writable parent overlays that bypass narrow policy.
 - Security policy in `index.ts`.
 - Test fixtures in normal startup code.

@@ -3,6 +3,8 @@ import "./capabilities.test.ts";
 import "./classifier-provider.test.ts";
 import "./classifier.test.ts";
 import "./config.test.ts";
+import "./direct-gate.test.ts";
+import "./direct-secret-evidence.test.ts";
 import "./grants.test.ts";
 import "./mount-plan.test.ts";
 import "./policy.test.ts";

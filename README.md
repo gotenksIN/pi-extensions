@@ -114,12 +114,15 @@ Network access is available when network isolation is off. Direct Pi filesystem
 tools use an application-level authorization gate. They do not use OS
 containment.
 
-The extension also has a two-stage classifier for model-generated Bash calls.
+The extension also has a two-stage classifier for model-generated Bash calls
+and direct `read`, `grep`, `write`, and `edit` calls. Direct-tool classification
+uses only sanitized project-path and operation metadata. It does not send file
+content, grep patterns, edit text, or write payloads to the provider.
 The classifier is an additional check. Bubblewrap remains the primary security
 boundary. Automatic execution requires `allow` from both classifier stages.
 A review, invalid result, refusal, timeout, or exhausted technical failure opens
 the shared human review prompt. A human can create a single-use approval for
-the exact Bash call.
+the exact classified call.
 Cancellation blocks the call without a new prompt. A technical provider failure
 triggers fallback to the next complete model pair. A valid review cannot cause
 provider fallback.
@@ -201,7 +204,7 @@ list replaces the defaults. Each pair has one provider and two stages. Each
 stage specifies a model and a Pi reasoning level. This lets users select models
 that their Pi setup can use. If no complete pair is available, Bubblewrap still
 starts. The extension shows a warning and requires human review for
-model-generated Bash calls.
+model-generated Bash, read, grep, write, and edit calls.
 See the extension architecture document for the custom pair schema and privacy
 limits.
 
@@ -227,9 +230,10 @@ overrides beneath a denied virtual path, are rejected.
 
 `/sandbox` shows lifecycle state, canonical policy, network settings, private
 `TMPDIR`, grants, SSH capability state, classifier availability, configured
-pairs, and the last sanitized classifier outcome. Direct Pi file tools do not
-use the classifier. They continue to use deterministic path policy and user
-approval.
+pairs, and the last sanitized classifier outcome. Direct `read`, `grep`,
+`write`, and `edit` calls use deterministic path policy before privacy-safe
+secret classification. `find` and `ls` continue to use only deterministic path
+policy. Direct writes retain user approval when required.
 
 `/sandbox-test` is the single test command. Its lazy test bridge loads the
 Pi-native unit suite first and then runs the shell integration script through
