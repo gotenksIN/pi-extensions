@@ -265,6 +265,12 @@ private overlay lifecycle. Overlay state does not affect approval validation.
 The classifier looks for malicious or unauthorized model-generated Bash calls.
 Examples include secret disclosure, remote mutation, destructive changes,
 persistence, privilege escalation, and sandbox bypass attempts.
+Read-only local inspection is routine. Commands such as `git status`, `git diff`,
+`git diff --check`, `git diff --stat`, `git log`, `git show`, and `git rev-parse`
+do not require review only because the repository contains sensitive code or
+history, or because a later separate action may push. The classifier assesses
+the exact current action. Git commands that change files, refs, hooks, remotes,
+or external services remain subject to the normal review rules.
 
 It also reviews model-generated `read`, `grep`, `write`, and `edit` calls for
 project-secret access. Deterministic policy runs before classification and can

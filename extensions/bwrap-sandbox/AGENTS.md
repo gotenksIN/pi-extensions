@@ -61,6 +61,13 @@ A user approval does not skip Bubblewrap.
 Trusted `user_bash` and `/sandbox-test` bypass classifier calls.
 They still use Bubblewrap.
 
+Read-only local inspection is routine. Do not make the classifier review
+`git status`, `git diff`, `git diff --check`, `git diff --stat`, `git log`,
+`git show`, or `git rev-parse` only because the repository contains sensitive
+code or history, or because a later separate action may push. Classify the
+exact current command. Keep review for Git commands that change files, refs,
+hooks, remotes, or external services.
+
 ## Ownership and dependency direction
 
 ### Filesystem and runtime
