@@ -89,8 +89,12 @@ test("oversized prior actions increase the omission count", () => {
 });
 
 test("classifier decision validation rejects extra and contradictory fields", () => {
-  assert.deepEqual(parseStage1Decision({ decision: "allow" }), { decision: "allow" });
-  assert.equal(parseStage1Decision({ decision: "allow", reason: "extra" }), undefined);
+  assert.deepEqual(
+    parseStage1Decision({ decision: "allow", reason: "Routine local action." }),
+    { decision: "allow", reason: "Routine local action." },
+  );
+  assert.equal(parseStage1Decision({ decision: "allow" }), undefined);
+  assert.equal(parseStage1Decision({ decision: "allow", reason: "", extra: true }), undefined);
   assert.deepEqual(
     parseStage2Decision({ decision: "allow", severity: "safe", risks: [], reason: "Routine local read." }),
     { decision: "allow", severity: "safe", risks: [], reason: "Routine local read." },

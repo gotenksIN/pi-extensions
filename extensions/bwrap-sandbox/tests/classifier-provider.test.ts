@@ -28,14 +28,14 @@ function registryWithResponse(response: unknown, capture: Record<string, unknown
 test("Pi classifier invocation reuses resolved auth and provider transport", async () => {
   const capture: Record<string, any> = {};
   const invoker = new PiClassifierStageInvoker(registryWithResponse(assistant([
-    { type: "toolCall", name: "record_stage1_decision", arguments: { decision: "allow" } },
+    { type: "toolCall", name: "record_stage1_decision", arguments: { decision: "allow", reason: "Safe." } },
   ]), capture));
   const resolved = await invoker.resolve("google", { model: "fast", reasoning: "minimal" });
   assert.ok(resolved);
   const outcome = await invoker.invokeStage1({
     stage: 1, resolved: resolved!, evidence: "{}", timeoutMs: 1_000, maxRetries: 1,
   });
-  assert.deepEqual(outcome, { kind: "decision", decision: { decision: "allow" } });
+  assert.deepEqual(outcome, { kind: "decision", decision: { decision: "allow", reason: "Safe." } });
   assert.equal(capture.model.baseUrl, "https://auth.example");
   assert.equal(capture.options.apiKey, "test-key");
   assert.deepEqual(capture.options.headers, { "X-Test": "one" });

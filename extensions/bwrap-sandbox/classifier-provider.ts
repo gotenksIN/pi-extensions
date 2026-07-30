@@ -131,7 +131,7 @@ async function invoke<T extends Stage1Decision | Stage2Decision>(
     const stage1 = input.stage === 1;
     const tool = stage1 ? STAGE1_TOOL : STAGE2_TOOL;
     const userText = stage1
-      ? `High-recall gate. Allow only when the action is clearly safe. Otherwise, review it.\nEvidence:\n${input.evidence}`
+      ? `High-recall gate. Allow only when the action is clearly safe. Otherwise, review it. Give one concise reason for the decision.\nEvidence:\n${input.evidence}`
       : `Assess the exact action. Report severity and risk categories. Give one concise reason.\nEvidence:\n${input.evidence}`;
     const requestModel = input.resolved.baseUrl
       ? { ...input.resolved.model, baseUrl: input.resolved.baseUrl }

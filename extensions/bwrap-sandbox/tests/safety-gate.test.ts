@@ -31,7 +31,7 @@ function registry(): ClassifierModelRegistry {
                 type: "toolCall",
                 name: stage1 ? "record_stage1_decision" : "record_stage2_decision",
                 arguments: stage1
-                  ? { decision: "allow" }
+                  ? { decision: "allow", reason: "Safe." }
                   : { decision: "allow", severity: "safe", risks: [], reason: "Safe." },
               }],
             }),

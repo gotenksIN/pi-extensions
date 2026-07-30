@@ -32,6 +32,12 @@ function blockedOutcome(stage: 1 | 2, outcome: Exclude<StageOutcome<any>, { kind
   return `stage-${stage}-${outcome.kind}`;
 }
 
+function reviewReason(stage: 1 | 2, outcome: Exclude<StageOutcome<any>, { kind: "technical" }>): string {
+  const normalized = blockedOutcome(stage, outcome);
+  const reason = outcome.kind === "decision" ? outcome.decision.reason : undefined;
+  return `Safety classification blocked the action at Stage ${stage} (${normalized})${reason ? `: ${reason}` : ""}`;
+}
+
 export class SafetyClassifier {
   private pairStatus: ClassifierPairStatus[] = [];
   private lastOutcome: string | undefined;
@@ -111,7 +117,7 @@ export class SafetyClassifier {
       }
       if (stage1.kind !== "decision" || stage1.decision.decision !== "allow") {
         this.lastOutcome = `${label}: ${blockedOutcome(1, stage1)}`;
-        return { allowed: false, reason: `Safety classification blocked the action at Stage 1 (${blockedOutcome(1, stage1)})` };
+        return { allowed: false, reason: reviewReason(1, stage1) };
       }
 
       const stage2Input: StageInvocation = {
@@ -127,7 +133,7 @@ export class SafetyClassifier {
       }
       if (stage2.kind !== "decision" || stage2.decision.decision !== "allow") {
         this.lastOutcome = `${label}: ${blockedOutcome(2, stage2)}`;
-        return { allowed: false, reason: `Safety classification blocked the action at Stage 2 (${blockedOutcome(2, stage2)})` };
+        return { allowed: false, reason: reviewReason(2, stage2) };
       }
 
       this.lastOutcome = `${label}: allow`;

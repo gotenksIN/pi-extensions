@@ -52,8 +52,8 @@ For a model-generated Bash call, preserve this order:
 3. If automatic approval stops, ask the human about the exact call.
 4. Execute an approved call through the existing Bubblewrap runtime.
 
-For a direct Pi file tool, use deterministic path policy instead of the
-classifier.
+For `read`, `grep`, `write`, and `edit`, apply deterministic path policy before
+the classifier. Use only deterministic path policy for `find` and `ls`.
 For a direct write, ask for user approval when policy requires it.
 For `sandbox_access`, use deterministic grant validation and user approval.
 A user approval does not skip Bubblewrap.
@@ -239,7 +239,7 @@ Never log or persist these values:
 - Provider errors that can contain request data.
 
 Diagnostics can contain provider and model labels, stage number, and a normalized
-outcome category.
+outcome category. Keep semantic reasons out of persistent status and logs.
 
 ## Decision invariants
 
@@ -251,9 +251,11 @@ Require exactly one correctly named decision tool call or equivalent strict Pi
 structured result.
 Reject prose answers, extra fields, multiple calls, unknown enums, incomplete
 output, and oversized fields.
+Require a bounded concise reason from both classifier stages.
 Reject Stage 2 `allow` when severity or risks contradict the decision.
 Never execute a classifier-generated tool call.
 Never store its reasoning.
+Show only the validated semantic decision reason in the human review prompt.
 
 ## Tool-call and permit invariants
 

@@ -15,6 +15,7 @@ export type SafetyRisk =
 
 export interface Stage1Decision {
   readonly decision: SafetyDecision;
+  readonly reason: string;
 }
 
 export interface Stage2Decision {
@@ -76,8 +77,11 @@ export const STAGE1_TOOL = {
   description: "Record the high-recall automatic execution decision.",
   parameters: {
     type: "object",
-    properties: { decision: decisionSchema },
-    required: ["decision"],
+    properties: {
+      decision: decisionSchema,
+      reason: { type: "string", minLength: 1, maxLength: 400 },
+    },
+    required: ["decision", "reason"],
     additionalProperties: false,
   },
   constrainedSampling: { type: "json_schema", strict: "prefer" } as const,
@@ -119,10 +123,12 @@ function record(value: unknown): value is Record<string, unknown> {
 }
 
 export function parseStage1Decision(value: unknown): Stage1Decision | undefined {
-  if (!record(value) || !exactKeys(value, ["decision"])) return undefined;
-  return DECISIONS.has(value.decision as SafetyDecision)
-    ? { decision: value.decision as SafetyDecision }
-    : undefined;
+  if (!record(value) || !exactKeys(value, ["decision", "reason"])) return undefined;
+  if (!DECISIONS.has(value.decision as SafetyDecision)) return undefined;
+  if (typeof value.reason !== "string" || !value.reason.trim() || Buffer.byteLength(value.reason, "utf8") > 400) {
+    return undefined;
+  }
+  return { decision: value.decision as SafetyDecision, reason: value.reason.trim() };
 }
 
 export function parseStage2Decision(value: unknown): Stage2Decision | undefined {

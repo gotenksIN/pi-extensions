@@ -374,16 +374,18 @@ scanner.
 
 ### Decisions
 
-Stage 1 returns only `allow` or `review`.
-Stage 2 also returns severity, risk categories, and a short reason.
+Stage 1 returns `allow` or `review` with a short reason.
+Stage 2 returns the decision, severity, risk categories, and a short reason.
 The extension validates all fields locally.
 It rejects unknown fields, multiple decisions, prose in place of a decision,
 contradictory allows, and incomplete output.
 
 The extension does not execute classifier tool calls.
 It does not store classifier reasoning.
+A human review prompt shows the validated, bounded reason for a semantic Stage 1
+or Stage 2 decision. Technical failures use normalized local text.
 Diagnostics contain only provider and model labels, stage numbers, and normalized
-outcome categories.
+outcome categories. Status does not retain decision reasons.
 
 ### Execution permits
 

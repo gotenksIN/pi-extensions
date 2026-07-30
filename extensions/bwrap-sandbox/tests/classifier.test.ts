@@ -24,8 +24,12 @@ function config(pairs = [google, openai]): ClassifierConfig {
   return { enabled: true, pairs, stage1TimeoutMs: 2_000, stage2TimeoutMs: 3_000, maxRetries: 1 };
 }
 
-const allow1: StageOutcome<Stage1Decision> = { kind: "decision", decision: { decision: "allow" } };
-const review1: StageOutcome<Stage1Decision> = { kind: "decision", decision: { decision: "review" } };
+const allow1: StageOutcome<Stage1Decision> = {
+  kind: "decision", decision: { decision: "allow", reason: "Routine local action." },
+};
+const review1: StageOutcome<Stage1Decision> = {
+  kind: "decision", decision: { decision: "review", reason: "External mutation risk." },
+};
 const allow2: StageOutcome<Stage2Decision> = {
   kind: "decision", decision: { decision: "allow", severity: "safe", risks: [], reason: "Safe." },
 };
@@ -99,6 +103,7 @@ test("a valid review never invokes a fallback pair", async () => {
   invoker.stage1.set("google/fast", review1);
   const result = await new SafetyClassifier(config(), invoker).evaluate("evidence");
   assert.equal(result.allowed, false);
+  assert.ok(!result.allowed && result.reason.includes("External mutation risk."));
   assert.deepEqual(invoker.calls.filter((call) => call.startsWith("stage")), ["stage1:google/fast"]);
 });
 
@@ -122,6 +127,7 @@ test("Stage 2 review and invalid output fail closed without fallback", async () 
     invoker.stage2.set("google/strong", outcome);
     const result = await new SafetyClassifier(config(), invoker).evaluate("evidence");
     assert.equal(result.allowed, false);
+    if (outcome.kind === "decision") assert.ok(!result.allowed && result.reason.includes("Risk."));
     assert.deepEqual(invoker.calls.filter((call) => call.startsWith("stage")), [
       "stage1:google/fast", "stage2:google/strong",
     ]);

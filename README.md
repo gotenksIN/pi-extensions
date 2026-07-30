@@ -121,8 +121,9 @@ content, grep patterns, edit text, or write payloads to the provider.
 The classifier is an additional check. Bubblewrap remains the primary security
 boundary. Automatic execution requires `allow` from both classifier stages.
 A review, invalid result, refusal, timeout, or exhausted technical failure opens
-the shared human review prompt. A human can create a single-use approval for
-the exact classified call.
+the shared human review prompt. A semantic review shows the classifier's
+validated bounded reason. A human can create a single-use approval for the exact
+classified call.
 Cancellation blocks the call without a new prompt. A technical provider failure
 triggers fallback to the next complete model pair. A valid review cannot cause
 provider fallback.
