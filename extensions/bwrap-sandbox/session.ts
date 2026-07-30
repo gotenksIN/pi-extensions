@@ -15,6 +15,9 @@ import {
 } from "./grants.ts";
 import { effectiveAccess, resolveExistingPath } from "./policy.ts";
 import { BubblewrapRuntime, findTrustedBwrap, probeBwrap } from "./runtime.ts";
+import { SafetyGate } from "./safety-gate.ts";
+import type { ClassifierStatus } from "./classifier.ts";
+import type { ClassifierModelRegistry } from "./classifier-provider.ts";
 import type {
   ApprovedWriteGrants,
   CompiledSandboxConfig,
@@ -60,6 +63,7 @@ export interface SessionStatusSnapshot {
   readonly tempDirectory?: string;
   readonly policy: readonly (readonly [string, FileAccess])[];
   readonly grants: readonly string[];
+  readonly classifier?: ClassifierStatus;
 }
 
 export interface PersistentGrantResult {
@@ -82,6 +86,8 @@ export interface SandboxSession {
   operations(): BashOperations;
   authorizeDirectRead(toolName: string, rawPath: string): void;
   authorizeDirectWrite(toolName: string, rawPath: string): Promise<void>;
+  authorizeBash(toolCallId: string, input: unknown, ctx: ExtensionContext): Promise<void>;
+  consumeBashPermit(toolCallId: string, input: unknown): void;
   requestPersistentWrite(rawPath: string): Promise<PersistentGrantResult>;
   status(): SessionStatusSnapshot;
   manualTestExecution(): ManualTestExecution;
@@ -98,6 +104,7 @@ function unavailableOperations(reason: string): BashOperations {
 class Session implements SandboxSession {
   private readonly home = homedir();
   private readonly approval: ApprovalChannel = createApprovalChannel();
+  private safetyGate: SafetyGate | undefined;
   private current: LifecycleState = {
     kind: "error",
     reason: "session has not started",
@@ -112,6 +119,8 @@ class Session implements SandboxSession {
     const previous = this.current.kind === "ready" ? this.current.runtime : undefined;
     this.current = { kind: "error", reason: "initializing", projectCwd: ctx.cwd };
     this.approval.detach();
+    this.safetyGate?.stop();
+    this.safetyGate = undefined;
     await previous?.shutdown();
     this.approval.attach(ctx);
 
@@ -154,7 +163,20 @@ class Session implements SandboxSession {
         runtime,
         bwrapExecutable,
       };
+      this.safetyGate = new SafetyGate(
+        config.classifier,
+        ctx.modelRegistry as unknown as ClassifierModelRegistry,
+      );
+      const classifier = await this.safetyGate.start();
       ctx.ui.setStatus("sandbox", ctx.ui.theme.fg("accent", "bwrap sandbox active"));
+      if (classifier.state === "unavailable") {
+        ctx.ui.notify(
+          "Safety classification is unavailable. Model-generated Bash calls will require human review. Set classifier.pairs in the global sandbox configuration. Set the provider, model, and reasoning level for both stages.",
+          "warning",
+        );
+      } else if (classifier.state === "disabled") {
+        ctx.ui.notify("Safety classification is disabled by global configuration. Bubblewrap remains active.", "warning");
+      }
       const ssh = sshCapabilityStatus(runtime.capabilities);
       const sshSummary = ssh.state === "enabled-mounted"
         ? "SSH agent capability is enabled and mounted"
@@ -179,6 +201,8 @@ class Session implements SandboxSession {
     const runtime = this.current.kind === "ready" ? this.current.runtime : undefined;
     this.current = { kind: "error", reason: "session is shutting down", projectCwd: this.current.projectCwd };
     this.approval.detach();
+    this.safetyGate?.stop();
+    this.safetyGate = undefined;
     await runtime?.shutdown();
     ctx.ui.setStatus("sandbox", undefined);
   }
@@ -224,14 +248,14 @@ class Session implements SandboxSession {
         `Resolved path: ${admission.path}`,
         "This is an application-level permission gate, not OS containment.",
       ].join("\n"),
-      ["No - block", "Yes - allow once", "Yes - grant path for session", "Yes - grant parent for session"],
+      ["No - block", "Yes - allow this write (single-use)", "Yes - grant path for session", "Yes - grant parent for session"],
     );
     if (!choice || choice.startsWith("No")) {
       throw new Error(`Sandbox denied ${toolName} access to ${admission.path}`);
     }
 
     state = this.ready();
-    if (choice === "Yes - allow once") {
+    if (choice === "Yes - allow this write (single-use)") {
       validateDirectWrite(admission.path, this.grantContext(state), state.grants);
       return;
     }
@@ -240,6 +264,49 @@ class Session implements SandboxSession {
     const next = addApprovedGrant(state.grants, grantPath, this.grantContext(state));
     this.current = { ...state, grants: next };
     this.approval.notify(`Sandbox granted write access for this session: ${grantPath}`);
+  }
+
+  async authorizeBash(toolCallId: string, input: unknown, ctx: ExtensionContext): Promise<void> {
+    const state = this.ready();
+    const gate = this.safetyGate;
+    if (!gate) throw new Error("Safety classification is unavailable");
+    const result = await gate.authorize({
+      branch: ctx.sessionManager.getBranch(),
+      toolCallId,
+      toolName: "bash",
+      input,
+      cwd: state.projectCwd,
+      signal: ctx.signal,
+    });
+    if (!result.allowed) {
+      if (ctx.signal?.aborted) throw new Error("Safety classification was cancelled");
+      const data = input && typeof input === "object" ? input as Record<string, unknown> : {};
+      const command = typeof data.command === "string" ? data.command : JSON.stringify(input);
+      const choice = await this.approval.request(
+        [
+          "The safety classifier requires human review for this Bash call.",
+          `Command: ${command}`,
+          `Classifier result: ${result.reason ?? "review required"}`,
+          "This approval applies to this call only. Bubblewrap remains active.",
+        ].join("\n"),
+        ["No - block", "Yes - create a single-use Bash approval"],
+      );
+      if (choice !== "Yes - create a single-use Bash approval") {
+        throw new Error(result.reason ?? "Safety classification blocked the Bash action");
+      }
+      if (ctx.signal?.aborted) throw new Error("Bash review was cancelled");
+      this.ready();
+      if (this.safetyGate !== gate) throw new Error("Safety approval expired because the session changed");
+      gate.approveBashOnce(toolCallId, input, state.projectCwd);
+      this.approval.notify("The user created a single-use Bash approval. Bubblewrap remains active.");
+    }
+  }
+
+  consumeBashPermit(toolCallId: string, input: unknown): void {
+    this.ready();
+    const gate = this.safetyGate;
+    if (!gate) throw new Error("Safety classification is unavailable");
+    gate.consumePermit(toolCallId, "bash", input, this.projectCwd());
   }
 
   async requestPersistentWrite(rawPath: string): Promise<PersistentGrantResult> {
@@ -280,6 +347,7 @@ class Session implements SandboxSession {
       ...(config ? { isolateNetwork: config.isolateNetwork, sshAgent: config.sshAgent } : {}),
       policy: config ? Object.entries(config.filesystem) : [],
       grants: state.kind === "ready" ? approvedGrantPaths(state.grants) : [],
+      ...(this.safetyGate ? { classifier: this.safetyGate.status() } : {}),
     };
   }
 

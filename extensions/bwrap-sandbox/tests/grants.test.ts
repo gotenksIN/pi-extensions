@@ -45,7 +45,7 @@ test("persistent grants are canonical, immutable, and widen effective writes", (
   assert.equal(validatePersistentGrant("/work/output/file", context(), next, existing).alreadyWritable, true);
 });
 
-test("direct one-time writes allow a missing target without creating a bind grant", () => {
+test("single-use direct writes allow a missing target without creating a bind grant", () => {
   const grants = emptyApprovedGrants();
   const admission = validateDirectWrite("new-file", context({}, () => "missing"), grants, missingTarget);
   assert.equal(admission.path, "/work/new-file");
@@ -59,7 +59,7 @@ test("hard none rejects persistent and direct write admission", () => {
   assert.throws(() => validateDirectWrite("/work/secret", denied, emptyApprovedGrants(), existing), /permanently denies/);
 });
 
-test("protected runtime paths reject persistent grants and direct one-time writes", () => {
+test("protected runtime paths reject persistent grants and single-use direct writes", () => {
   const grants = emptyApprovedGrants();
   assert.throws(() => validatePersistentGrant("/usr", context(), grants, existing), /Bubblewrap executable/);
   assert.throws(() => validatePersistentGrant("/tmp", context(), grants, existing), /temporary directory/);

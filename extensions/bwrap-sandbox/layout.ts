@@ -20,7 +20,7 @@ export function intersectsFreshRuntimePath(path: string): boolean {
 
 /**
  * Validate a path that may become writable. A persistent subtree grant can
- * cover the trusted executable; a one-time direct write protects the exact
+ * cover the trusted executable; a single-use direct write protects the exact
  * target while still rejecting fresh namespace intersections and attempts to
  * make the host temporary parent writable.
  */

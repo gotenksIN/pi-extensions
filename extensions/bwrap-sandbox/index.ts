@@ -4,6 +4,7 @@ import { Type } from "typebox";
 import { registerSandboxCommands } from "./commands.ts";
 import { authorizeDirectTool, isDirectFilesystemTool } from "./direct-gate.ts";
 import { createSandboxSession } from "./session.ts";
+import { requiresSafetyClassification } from "./safety-gate.ts";
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -23,6 +24,7 @@ export default function sandboxExtension(pi: ExtensionAPI) {
     label: "bash (Linux Bubblewrap)",
     async execute(id, params, signal, onUpdate) {
       const cwd = session.projectCwd();
+      if (session.state() === "ready") session.consumeBashPermit(id, params);
       const bash = session.state() === "disabled"
         ? createBashTool(cwd)
         : createBashTool(cwd, { operations: session.operations() });
@@ -67,17 +69,22 @@ export default function sandboxExtension(pi: ExtensionAPI) {
     return { operations: session.operations() };
   });
 
-  pi.on("tool_call", async (event) => {
-    if (!isDirectFilesystemTool(event.toolName) || session.state() === "disabled") return undefined;
+  pi.on("tool_call", async (event, ctx) => {
+    if (session.state() === "disabled") return undefined;
     if (session.state() !== "ready") {
-      return { block: true, reason: `Sandbox unavailable; refusing direct filesystem access: ${session.reason()}` };
+      return { block: true, reason: `Sandbox unavailable; refusing model tool execution: ${session.reason()}` };
     }
 
-    const input = event.input as { path?: unknown };
-    const rawPath = typeof input.path === "string" && input.path.length > 0
-      ? input.path
-      : session.projectCwd();
     try {
+      if (requiresSafetyClassification(event.toolName)) {
+        await session.authorizeBash(event.toolCallId, event.input, ctx);
+        return undefined;
+      }
+      if (!isDirectFilesystemTool(event.toolName)) return undefined;
+      const input = event.input as { path?: unknown };
+      const rawPath = typeof input.path === "string" && input.path.length > 0
+        ? input.path
+        : session.projectCwd();
       await authorizeDirectTool(event.toolName, rawPath, session);
       return undefined;
     } catch (error) {

@@ -19,6 +19,17 @@ function formatStatus(status: SessionStatusSnapshot): string {
           : status.sshAgent
             ? "enabled, but runtime capability status is unavailable"
             : "disabled; runtime capability status is unavailable";
+  const classifier = status.classifier;
+  const classifierLines = classifier
+    ? [
+      `Safety classifier: ${classifier.state.toUpperCase()}`,
+      ...classifier.pairs.map((pair) => `  ${pair.available ? "available" : "unavailable"}: ${pair.label}`),
+      ...(classifier.lastOutcome ? [`  Last outcome: ${classifier.lastOutcome}`] : []),
+      ...(classifier.state === "unavailable"
+        ? ["  Set provider, model, and reasoning for both stages in global classifier.pairs."]
+        : []),
+    ]
+    : ["Safety classifier: not initialized"];
   return [
     `Bubblewrap sandbox: ${status.state.toUpperCase()}`,
     `Reason: ${status.reason}`,
@@ -31,6 +42,7 @@ function formatStatus(status: SessionStatusSnapshot): string {
     ...(status.policy.length ? status.policy.map(([path, access]) => `  ${access}: ${path}`) : ["  (unavailable)"]),
     "Session grants:",
     ...(status.grants.length ? status.grants.map((path) => `  write: ${path}`) : ["  (none)"]),
+    ...classifierLines,
     "Direct read/write/edit/grep/find/ls checks are application-level permission gates, not OS containment.",
   ].join("\n");
 }

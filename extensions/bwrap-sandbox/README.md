@@ -1,240 +1,491 @@
 # Bubblewrap sandbox architecture
 
-## Goals and non-goals
+## Purpose
 
-This extension gives every Pi Bash invocation a Linux Bubblewrap integrity and
-write-boundary sandbox. Its goals are deterministic filesystem policy,
-human-approved session writes, a private writable temporary directory, optional
-network isolation, and explicit support for Git SSH signing through the exact
-inherited agent socket. It also applies an application-level authorization gate
-to Pi's direct filesystem tools.
+This extension protects the host from commands that Pi runs on Linux.
+Bubblewrap is the primary security boundary.
+It gives each Bash process a restricted mount namespace.
 
-It is not a confidentiality boundary, a shell-command analyzer, a container
-manager, or a general capability/plugin framework. Unmatched host paths are
-readable, environment variables are inherited, and networking remains available
-unless configured otherwise. It does not interpret Git configuration or shell
-syntax when deciding mounts.
+The extension also checks Pi file tools in the host process.
+It asks the user before it adds a session write grant.
+It can use a two-stage model classifier before model-generated Bash calls.
+The classifier is an additional check.
+It does not replace Bubblewrap or user approval.
 
-## Threat model
+## Security goals
 
-Sandboxed commands and their descendants are untrusted. The design protects
-host integrity by starting from a read-only host root, exposing only compiled
-writes, dropping capabilities, isolating user and PID namespaces, and optionally
-isolating networking. Explicit `none` rules hide selected host paths. Filesystem
-inspection errors, path ambiguity, missing writable bind sources, and runtime
-resource type changes fail closed.
+The extension has these goals:
 
-The host process, Pi extension code, trusted global and trusted-project
-configuration, the root-owned Bubblewrap executable, and the human answering an
-approval prompt are trusted. Host reads, inherited environment values, agent
-requests, network exfiltration when networking is enabled, and check-to-use
-races in the direct-tool gate remain in scope as limitations.
+- Start each Bash process with a read-only view of the host root.
+- Apply a strict filesystem policy to selected paths.
+- Hide paths that have `none` access.
+- Make only approved paths writable.
+- Give each session a private writable temporary directory.
+- Optionally isolate the network.
+- Support one exact inherited SSH agent socket when the user enables it.
+- Check direct Pi file tools before they access the host.
+- Check model-generated Bash calls with two independent classifier stages.
+- Fail closed when a required security check cannot finish.
 
-## Trust domains and precedence
+The extension is not a confidentiality boundary.
+Unmatched host files are readable.
+Child processes inherit environment values.
+Network access is available when network isolation is off.
+An enabled SSH agent can sign or authenticate with its loaded keys.
 
-The effective namespace is assembled in this order:
+## Trust model
 
-1. A read-only bind of host `/`, followed by fresh `/dev` and fresh `/proc`.
-2. Closed trusted runtime resources: a hidden source root, denied-file source,
-   and deterministic OpenSSH system configuration.
-3. Closed runtime capabilities: one exact private temporary directory and the
-   disposition of one exact canonical inherited SSH agent socket.
-4. Canonical compiled filesystem policy, where the most-specific configured
-   path wins.
-5. Canonical human-approved session write grants.
+The extension trusts these components:
 
-Mount operations are emitted broad-to-narrow so narrow decisions realize that
-precedence. A grant never overrides effective `none`. Grants cannot manufacture
-runtime capabilities. Runtime capabilities do not authorize direct-tool access.
+- The Pi host process.
+- This extension code.
+- Trusted global configuration.
+- Trusted project filesystem configuration.
+- The root-owned Bubblewrap executable.
+- The user who answers an approval request.
+- Providers, models, and authentication that Pi registers.
 
-An enabled SSH capability is a deliberate narrow exception to an inherited
-parent `none`: generated directory scaffolding makes only the exact socket
-reachable. An exact configured `none` on that socket is an explicit veto and
-fails capability construction. With SSH disabled, an inherited canonical socket
-that ordinary policy would expose receives an exact mask. A capability does not
-turn unrelated parent siblings into readable paths. The fixed fresh `/dev`,
-`/proc`, trusted-resource mask, and read-only SSH client configuration cannot be
-made writable by policy, grants, or capabilities. An explicit policy `none` on
-the SSH client configuration destination still hides that file.
+The extension does not trust these inputs:
 
-## Ownership and dependency map
+- Sandboxed commands and their child processes.
+- Assistant text and reasoning.
+- Model-generated tool arguments.
+- Repository files, comments, and scripts.
+- Prior model actions.
+- Tool output.
+- Classifier output until local validation succeeds.
 
-- `types.ts` defines branded compiled policy, branded approved grants, the
-  closed branded runtime-capability union, and typed mount operations.
-- `policy.ts` alone canonicalizes paths, compiles filesystem rules, and computes
-  most-specific policy access. It contains no SSH behavior.
-- `layout.ts` owns fresh `/dev` and `/proc`, trusted executable, host temporary
-  parent, trusted resource root, and fixed SSH configuration destination
-  invariants.
-- `grants.ts` is the only user-write admission authority. It validates and
-  constructs `ApprovedWriteGrants`; it neither accepts nor creates runtime
-  capabilities.
-- `capabilities.ts` alone validates the closed resource tree, discovers and
-  canonicalizes inherited `SSH_AUTH_SOCK`, validates socket and private-temp
-  types, applies the exact socket veto, constructs and reports capability state,
-  revalidates before spawn, and derives capability-coupled child environment
-  variables.
-- `mount-plan.ts` consumes one input containing compiled policy, approved grants,
-  and runtime capabilities. It produces deterministic namespace operations with
-  distinct bind source and destination.
-- `runtime.ts` creates the host-only resource root and its private-temp,
-  denied-file, and deterministic OpenSSH children, constructs capabilities,
-  compiles plans, spawns and reaps Bubblewrap children, and removes the complete
-  resource tree.
-- `session.ts` composes configuration, lifecycle, approval broker, grants, and
-  runtime. `commands.ts` presents status and the one-command test surface.
-- `direct-gate.ts` applies application-level policy to Pi filesystem tools.
-  `index.ts` registers Pi surfaces and delegates; it has no feature logic.
+Only user-role messages can supply authorization evidence to the classifier.
+Pi cannot always prove that a human typed a user-role message.
+This is a provenance limit of the Pi extension API.
 
-Dependencies flow from lifecycle and UI modules toward these narrow owners;
-policy, layout, grants, and capabilities do not depend on session or command
-registration.
+## Authorization order
 
-## Compilation and runtime flow
+A model-generated Bash call passes through these controls:
 
-The security pipeline is:
+1. Classifier Stage 1 must return a valid `allow` decision.
+2. Classifier Stage 2 must return a valid `allow` decision.
+3. If automatic approval stops, the human can create a single-use approval for
+   the exact call.
+4. Bubblewrap builds the mount plan and starts the Bash process.
 
-1. Strictly parse global config, then trusted project config. Project config may
-   override existing project-scoped settings but may not contain `sshAgent`.
-2. Resolve raw filesystem paths and aliases into a branded canonical compiled
-   policy.
-3. Create a mode-0700 host-only resource root with immediate `tmp/`,
-   `denied-file`, and generated `ssh_config` children.
-4. Construct a single branded capability bundle from that closed resource tree,
-   compiled policy, global/default SSH setting, and inherited environment.
-5. Combine compiled policy, branded grants, resources, and capabilities into one
-   mount plan.
-6. Immediately before every spawn, revalidate every trusted source and an
-   enabled socket, then derive `TMPDIR`, `TMP`, `TEMP`, and `SSH_AUTH_SOCK` from
-   the same bundle used by the mount plan.
-7. Spawn Bubblewrap, preserve cancellation and timeout behavior, kill the child
-   process group when required, reap it, and remove private resources at
-   shutdown.
+A direct Pi file tool uses deterministic path policy instead of the classifier.
+A direct write also uses the existing user approval flow.
+A `sandbox_access` request uses deterministic grant validation and user approval.
 
-Capability construction reports enabled-but-unavailable SSH state rather than
-claiming signing support. An explicit exact socket veto and invariant violations
-fail startup. A socket that changes type after startup fails the affected spawn.
+Each control is independent.
+Automatic execution requires two classifier `allow` decisions.
+A human review approval is single-use and applies to one exact Bash call.
+A classifier decision or human review approval cannot create a mount, grant, or
+runtime capability.
+It cannot bypass a Bubblewrap error.
+A user grant cannot override `none` or a protected runtime path.
 
-## Filesystem access, grants, and IPC capabilities
+User `!` and `!!` Bash commands do not come from a model tool call.
+They do not use the classifier.
+They still run through Bubblewrap.
+The `/sandbox-test` command also bypasses classifier inference.
+This prevents paid calls during tests.
 
-Filesystem policy describes ordinary `none`, `read`, and `write` access. An
-approved grant is a human decision to widen one canonical existing filesystem
-source to `write` for the session; it remains subordinate to `none` and protected
-runtime paths.
+## Filesystem policy
 
-Trusted resources and runtime capabilities are different from policy and
-approval grants. The source root is replaced by a synthetic directory inside
-Bubblewrap, so untrusted commands can reach only its exact writable `tmp/`
-child. The denied-file and generated SSH configuration source inodes remain
-unreachable. The SSH socket bind is read-only as a filesystem mount, but
-connecting to it can request agent operations. None of these resources is
-represented as a user grant or consulted by direct-tool authorization.
+The extension starts with a read-only bind of host `/`.
+It then applies the configured filesystem rules.
+Each rule has one access value:
 
-## SSH signing capability and abuse scope
+- `none` hides the path.
+- `read` exposes the path as read-only.
+- `write` exposes the path as writable.
 
-`sshAgent` defaults to `true` globally because SSH-signed Git commits are a
-compatibility requirement. If inherited `SSH_AUTH_SOCK` names an existing
-absolute socket, only its canonical exact path is exposed. No socket directories
-are scanned. Parent masks and read-only remounts keep unrelated siblings hidden,
-and private key files remain hidden by policy.
+The most specific matching path wins.
+The policy compiler resolves paths to canonical absolute paths.
+Invalid paths and ambiguous paths fail closed.
 
-This capability has a real security cost: any sandboxed command can ask the
-inherited agent to authenticate or sign with keys the agent makes available.
-Hiding private key files does not prevent that abuse. Security-focused users can
-set `sshAgent: false` in global configuration; the variable is removed and an
-otherwise visible inherited socket is exactly masked. Project configuration is
-never allowed to set or re-enable this credential capability.
+A session write grant applies to one canonical existing path.
+The user must approve the grant.
+A grant stays active for the current session only.
+A grant does not override an effective `none` rule.
+A grant does not apply to protected runtime resources.
 
-Bubblewrap's user namespace represents host-root-owned files as an unmapped UID,
-which causes OpenSSH to reject some system configuration includes before agent
-use. The fixed runtime topology therefore read-only-binds a generated mode-0600
-minimal configuration over `/etc/ssh/ssh_config`. OpenSSH still reads permitted
-user configuration and known-host files. Host system SSH defaults and include
-graphs are intentionally not copied: doing so would add parser, symlink, and race
-complexity. Environments requiring system proxy directives must place equivalent
-settings in readable user configuration. The fix is namespace-level and applies
-to ordinary `ssh` and Git SSH transport without command-specific environment.
+## Mount order
 
-## Mount phases and denied-parent invariant
+The mount plan uses this order:
 
-The plan is deterministic and inspectable:
+1. Bind the host root as read-only.
+2. Create fresh `/dev` and `/proc` mounts.
+3. Install trusted runtime resource masks.
+4. Apply filesystem policy mounts.
+5. Apply approved session write grants.
+6. Apply the private temporary directory and SSH agent capability.
+7. Remount required parent paths as read-only.
 
-1. Read-only host root, fresh `/dev`, and fresh `/proc`.
-2. Broad-to-narrow trusted-resource, policy, grant, and capability operations.
-3. For a denied directory with permitted descendants: a tmpfs mask, only the
-   required scaffold directories, then exact child binds.
-4. Deepest-first read-only remounts of parents that had to remain writable while
-   narrower mounts were installed.
+The planner emits broad paths before narrow paths.
+It remounts parents from the deepest path to the shallowest path.
+This order keeps narrow decisions effective.
 
-The trusted source root follows the same invariant: root mask → exact writable
-`tmp/` bind → root remount, while the denied-file and SSH-configuration source
-inodes remain hidden. For an inherited denied SSH parent, ordering is parent
-mask → scaffold → exact read-only socket bind → deepest-first parent remount.
-Bind and file-mask operations record their exact source and destination.
-Scaffolding contains no host siblings and never substitutes a broad host-parent
-bind.
+When a denied directory has an allowed child, the planner does not bind the
+host parent directory.
+It creates an empty directory structure and binds only the allowed child.
+This prevents exposure of sibling paths.
 
-## Direct-tool and lifecycle limitations
+## Runtime resources
 
-Pi `read`, `write`, `edit`, `grep`, `find`, and `ls` execute in Pi's host process,
-not inside Bubblewrap. Their structured paths pass through an application-level
-gate, which is permission logic rather than OS containment and has an unavoidable
-check-to-use race. Runtime capabilities intentionally do not widen this gate.
+The runtime creates one mode-0700 resource directory for each session.
+The directory contains:
 
-Parent and subagent prompts share a compatibility approval broker. Requests are
-serialized and owner-checked; a child cannot approve itself and fails closed
-without an interactive parent. Pi cannot cancel a select dialog already shown,
-so a stale dialog can hold the queue until a human dismisses it. Generation and
-owner checks reject its eventual result but cannot remove the displayed prompt.
+- A private writable `tmp` directory.
+- A source file that masks denied files.
+- A generated OpenSSH system configuration file.
 
-## Testing strategy
+The runtime hides the resource root inside the sandbox.
+Only the private `tmp` child is writable and visible.
+The child environment uses the same path for `TMPDIR`, `TMP`, and `TEMP`.
 
-Pi-native unit tests cover config scope/defaults, canonical policy, grant
-admission, capability construction and environment coupling, mount operation
-type/source/destination/order, lifecycle approval behavior, and repeat-safe lazy
-registration. They use injected filesystem inspectors and do not require
-Bubblewrap.
+The runtime validates trusted resources before each process starts.
+A resource type change causes that process start to fail closed.
+The runtime removes the complete resource tree during shutdown.
 
-`/sandbox-test` is the only integration command. It runs the registered unit
-suite and then the shell script through the active runtime, writing combined
-output to `sandbox-manual-test.log`. Integration proves private temporary writes,
-hidden trusted source inodes, read-only generated SSH configuration, ordinary
-OpenSSH parsing, project and child writes, host `/tmp` and `.git` protection,
-hidden SSH key and socket siblings, broad host reads, and the PNG fixture. For
-an SSH origin it performs authenticated `git ls-remote`. It also creates a
-throwaway repository under private `TMPDIR`, performs a real globally configured
-SSH-signed commit through the inherited agent, checks the commit's SSH `gpgsig`,
-builds a temporary allowed-signers file from the configured email and public
-signing key, and runs `git verify-commit`. Unsupported key configuration fails
-with diagnostics; signing is never bypassed. Claims about live Bubblewrap
-behavior require a successful `/sandbox-test` run in the target environment.
+## SSH agent capability
 
-## Mandatory change checklist
+The global `sshAgent` setting is `true` by default.
+Project configuration cannot set this value.
 
-Every security-sensitive change must answer all of these before merge:
+When SSH agent access is enabled, the extension checks `SSH_AUTH_SOCK`.
+It accepts only one existing absolute socket.
+It resolves the socket to one canonical path.
+It exposes only that exact socket.
+It does not scan socket directories.
+
+An exact `none` rule on the socket stops sandbox startup.
+An inherited `none` rule on a parent can stay in effect.
+The mount planner creates only the directory structure for the exact socket.
+It does not expose socket siblings.
+
+When SSH agent access is disabled, the extension removes `SSH_AUTH_SOCK` from
+the child environment.
+It also masks an inherited socket that policy would otherwise expose.
+
+An SSH agent is an IPC capability.
+A process can ask the agent to authenticate or sign.
+The process does not need access to private key files.
+Set `sshAgent` to `false` when this capability is not acceptable.
+
+Bubblewrap user namespaces can make host system SSH files appear to have an
+unmapped owner.
+OpenSSH can reject those files.
+The extension therefore mounts a small generated system configuration at
+`/etc/ssh/ssh_config`.
+The mount is read-only.
+User SSH configuration and known-host files remain subject to filesystem policy.
+
+## Direct Pi file tools
+
+Pi runs `read`, `write`, `edit`, `grep`, `find`, and `ls` in the host process.
+Bubblewrap cannot contain these operations.
+The extension checks their structured path arguments before execution.
+
+The direct-tool check is application-level permission logic.
+It is not OS containment.
+A check-to-use race is possible.
+Runtime capabilities do not widen direct-tool access.
+
+A direct write outside current write policy uses the shared approval channel.
+The user can allow one operation or add a session grant.
+A subagent cannot approve its own request.
+A subagent request must use an interactive parent approval owner.
+Requests fail closed when no owner is available.
+
+## Safety classifier
+
+### Purpose
+
+The classifier looks for malicious or unauthorized model-generated Bash calls.
+Examples include secret disclosure, remote mutation, destructive changes,
+persistence, privilege escalation, and sandbox bypass attempts.
+
+The classifier checks only model-generated `bash` tool calls.
+Direct Pi file tools use deterministic path checks.
+Direct writes and `sandbox_access` also use user approval when required.
+The classifier does not check other extension tools.
+
+### Default model pairs
+
+The extension uses an ordered list of complete pairs.
+Each pair uses one provider for both stages.
+
+The first default pair is Google:
+
+- Stage 1: `google/gemini-3.5-flash-lite` with `minimal` reasoning.
+- Stage 2: `google/gemini-3.6-flash` with `low` reasoning.
+
+The second default pair is OpenAI:
+
+- Stage 1: `openai/gpt-5.4-nano` with `none` reasoning.
+- Stage 2: `openai/gpt-5.4-mini` with `low` reasoning.
+
+Google is the preferred default.
+OpenAI is the default technical fallback.
+The extension does not combine stages from different pairs.
+
+### Custom model pairs
+
+The default pairs are recommendations.
+They are not an allowlist.
+A user can replace them in global configuration.
+Each custom pair must specify one provider, two model IDs, and two reasoning
+levels.
+The models must exist in the Pi model registry.
+The provider must support the configured reasoning levels.
+
+The extension uses Pi authentication and Pi provider transports.
+It does not store API keys.
+It does not read provider credentials directly.
+It does not add Google or OpenAI SDKs.
+
+Project configuration cannot set classifier options.
+Repository content must not select the security reviewer.
+
+### Pair selection and fallback
+
+At startup, the extension checks the model registry and authentication state.
+This check does not make an inference request.
+The first complete available pair becomes the preferred pair.
+
+If no complete pair is available, Bubblewrap still starts.
+The extension shows a warning.
+The warning tells the user to configure a complete pair.
+When the classifier is unavailable, model-generated Bash calls require human
+review.
+User Bash and `/sandbox-test` continue to use Bubblewrap.
+
+The extension resolves availability again for each action.
+It starts with the first available configured pair.
+
+A pair succeeds only when both stages return valid `allow` decisions.
+A valid `review` stops automatic approval.
+Invalid output, refusal, timeout, or exhausted technical failure also stops
+automatic approval.
+These results open the shared human review prompt for the exact Bash call.
+Cancellation blocks the call without a new prompt.
+
+A technical provider or model failure can cause fallback to the next pair.
+The next pair always starts at Stage 1.
+The extension discards a partial approval from the failed pair.
+If all pairs fail, the call requires human review.
+A human allow creates one single-use execution permit.
+It does not create a filesystem grant.
+A human denial blocks the call.
+
+### Evidence
+
+Classifier evidence is bounded.
+It can contain:
+
+- Recent user-role text messages from the active branch.
+- The current tool name.
+- The complete current structured input.
+- The project working directory.
+- A bounded list of prior structured actions.
+- Counts for omitted historical items.
+
+The evidence does not contain tool-result content.
+The extension does not read a referenced script for classification.
+It does not treat assistant text or prior actions as authorization.
+
+The extension can omit old history with an explicit marker.
+It does not silently truncate the current action.
+An action that is too large or cannot be serialized is blocked locally.
+
+The action itself can contain a secret or proprietary value.
+Sending the action to a classifier provider can disclose that value.
+A generic redactor cannot preserve all security meaning.
+Users must consider this limit when they select classifier providers.
+
+### Decisions
+
+Stage 1 returns only `allow` or `review`.
+Stage 2 also returns severity, risk categories, and a short reason.
+The extension validates all fields locally.
+It rejects unknown fields, multiple decisions, prose in place of a decision,
+contradictory allows, and incomplete output.
+
+The extension does not execute classifier tool calls.
+It does not store classifier reasoning.
+Diagnostics contain only provider and model labels, stage numbers, and normalized
+outcome categories.
+
+### Execution permits
+
+The `tool_call` input is mutable.
+A later extension can change it after this extension checks it.
+For extension-owned `bash`, the extension creates a single-use permit after two
+classifier allows or one explicit human review approval.
+The permit covers the tool call ID, tool name, final input, and working
+directory.
+The tool consumes the permit immediately before execution.
+A missing, changed, expired, or reused permit fails closed.
+
+## Configuration
+
+Global configuration path:
+
+```text
+~/.pi/agent/extensions/sandbox.json
+```
+
+Trusted project configuration path:
+
+```text
+.pi/sandbox.json
+```
+
+Example global configuration:
+
+```json
+{
+  "enabled": true,
+  "isolateNetwork": false,
+  "sshAgent": true,
+  "filesystem": {
+    ":project": "write",
+    ":project/.git": "read",
+    "~/.ssh": "none",
+    "~/.ssh/config": "read",
+    "~/.ssh/known_hosts": "read",
+    "~/.pi": "read",
+    "/tmp": "read"
+  },
+  "classifier": {
+    "enabled": true,
+    "stage1TimeoutMs": 20000,
+    "stage2TimeoutMs": 30000,
+    "maxRetries": 1
+  }
+}
+```
+
+Omit `classifier.pairs` to use the default pairs.
+A configured list replaces the defaults.
+
+Example custom pair:
+
+```json
+{
+  "classifier": {
+    "pairs": [
+      {
+        "provider": "custom-provider",
+        "stage1": {
+          "model": "fast-model",
+          "reasoning": "minimal"
+        },
+        "stage2": {
+          "model": "strong-model",
+          "reasoning": "high"
+        }
+      }
+    ]
+  }
+}
+```
+
+Configuration parsing is strict.
+Unknown fields and invalid values stop startup.
+Project configuration cannot contain `sshAgent` or `classifier`.
+
+The default policy protects `:project/.git` only when that entry exists at
+session start.
+The entry can be a directory or a linked-worktree file.
+If the entry does not exist, the default rule is absent for that session.
+The next session protects a newly created entry.
+
+Set `isolateNetwork` to `true` to add `--unshare-net`.
+Writable rules under fresh `/dev` or `/proc` are invalid.
+Readable exceptions below a denied virtual path are also invalid.
+
+## Status and tests
+
+Use `/sandbox` to show:
+
+- Bubblewrap lifecycle state.
+- Canonical filesystem policy.
+- Network isolation state.
+- SSH agent capability state.
+- Private temporary directory.
+- Session write grants.
+- Classifier state and selected pair.
+- Sanitized classifier diagnostics.
+
+Use `/sandbox-test` as the single test command.
+It first runs the Pi-native unit tests.
+It then runs the shell integration test through the active runtime.
+The unit tests do not contact model providers.
+
+The integration test checks the real mount namespace.
+It checks private temporary writes, denied resources, project writes, `.git`
+protection, SSH configuration, SSH socket isolation, Git transport, SSH signing,
+and signature verification.
+It writes combined output to `sandbox-manual-test.log`.
+
+A successful unit test does not prove kernel containment.
+A live containment claim requires a successful integration test on the target
+system.
+
+## Module ownership
+
+- `types.ts` defines policy, grant, capability, classifier, and status types.
+- `policy.ts` resolves paths and compiles filesystem policy.
+- `layout.ts` defines fixed host and namespace paths.
+- `grants.ts` validates and creates human-approved write grants.
+- `capabilities.ts` creates private-temp and SSH agent capabilities.
+- `mount-plan.ts` creates deterministic mount operations.
+- `runtime.ts` owns trusted resources and Bubblewrap processes.
+- `approval.ts` owns the parent and subagent approval broker.
+- `direct-gate.ts` identifies direct host filesystem tools.
+- `safety-policy.ts` owns classifier prompts, schemas, and fixed limits.
+- `safety-evidence.ts` owns bounded evidence and action digests.
+- `classifier-provider.ts` owns Pi-native stage invocation.
+- `classifier.ts` owns pair selection and the fallback state machine.
+- `safety-gate.ts` owns Bash approval and single-use permits.
+- `session.ts` composes lifecycle, grants, runtime, and the safety gate.
+- `commands.ts` presents status and the native test command.
+- `index.ts` registers Pi surfaces and delegates work.
+
+Dependencies flow from `index.ts` and `session.ts` toward narrow owners.
+Filesystem and runtime modules do not depend on classifier modules.
+
+## Change checklist
+
+Before a security change, answer these questions:
 
 - Which module owns the decision or resource?
-- Is it filesystem access, a user grant, or a runtime capability, and what is
-  its abuse scope?
-- What is its default and which config scope is allowed to set it?
-- How do exact `none` and inherited parent `none` apply?
-- What are the mount source, destination, source type, access mode, and order?
-- Which child environment values must remain coupled to the mount?
-- Does invalid, missing, changed, or unavailable state fail startup, fail spawn,
-  become an explicit unavailable status, or receive a mask?
-- Which unit tests prove each branch?
-- Which `/sandbox-test` integration proof demonstrates actual behavior?
-- Do this document, root user documentation, status text, and tests agree?
+- Is the change policy, a user grant, a runtime capability, or classifier logic?
+- Can the change make any host path writable or visible?
+- How do exact and inherited `none` rules apply?
+- What is the mount source, destination, type, access, and order?
+- Which environment values depend on the same runtime capability?
+- Which configuration scope can set the option?
+- What happens when configuration or runtime state is invalid?
+- Can a classifier fallback change a valid review decision?
+- Can evidence or diagnostics disclose a secret?
+- Which native unit tests prove each branch?
+- Which integration check proves actual Bubblewrap behavior?
+- Do this document, user documentation, status output, and tests agree?
 
-## Prohibited patterns
+## Prohibited designs
 
-Do not introduce:
+Do not add these designs:
 
-- shell or Git command parsing to decide mounts;
-- feature checks or security policy in `index.ts`;
-- capability creation from human grants;
-- duplicated protected-path or capability checks across modules;
-- test fixtures in normal startup code;
-- generalized capability/plugin registration for the closed runtime resources;
-- writable parent overlays used to bypass policy; or
-- runtime-security claims not backed by `/sandbox-test` in the target environment.
+- Shell or Git parsing to decide mounts.
+- Command regex allowlists.
+- Classifier-created grants, mounts, or capabilities.
+- Mixed-provider approvals inside one pair.
+- Provider fallback after a valid `review`.
+- Direct provider credential management.
+- Raw evidence or provider-response logging.
+- Repository-file ingestion for classifier evidence.
+- Writable parent overlays that bypass narrow policy.
+- Security policy in `index.ts`.
+- Test fixtures in normal startup code.
+- Live provider calls in unit tests.
+- Runtime security claims without a successful integration test.

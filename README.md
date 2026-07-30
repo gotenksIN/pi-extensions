@@ -108,10 +108,27 @@ standard path, avoiding user-namespace ownership rejection while preserving
 permitted user SSH configuration. This supports ordinary SSH and Git-over-SSH
 without command parsing or Git-specific environment patches.
 
-This is an integrity and write-boundary sandbox, not a confidentiality boundary.
-Unmatched host files and inherited environment values are readable, and network
-access remains available unless isolated. Direct Pi filesystem tools use an
-application-level authorization gate rather than OS containment.
+This is an integrity and write-boundary sandbox. It is not a confidentiality
+boundary. Unmatched host files and inherited environment values are readable.
+Network access is available when network isolation is off. Direct Pi filesystem
+tools use an application-level authorization gate. They do not use OS
+containment.
+
+The extension also has a two-stage classifier for model-generated Bash calls.
+The classifier is an additional check. Bubblewrap remains the primary security
+boundary. Automatic execution requires `allow` from both classifier stages.
+A review, invalid result, refusal, timeout, or exhausted technical failure opens
+the shared human review prompt. A human can create a single-use approval for
+the exact Bash call.
+Cancellation blocks the call without a new prompt. A technical provider failure
+triggers fallback to the next complete model pair. A valid review cannot cause
+provider fallback.
+
+The default pair order is Google and then OpenAI. Google uses
+`gemini-3.5-flash-lite` and `gemini-3.6-flash`. OpenAI uses `gpt-5.4-nano` and
+`gpt-5.4-mini`. The extension uses models, providers, and authentication from
+Pi. It does not store provider credentials. Global configuration can replace
+the defaults with complete custom pairs.
 
 See the authoritative
 [`extensions/bwrap-sandbox/README.md`](extensions/bwrap-sandbox/README.md) for
@@ -156,6 +173,12 @@ Global example (`sshAgent` must be omitted from project config):
   "enabled": true,
   "isolateNetwork": false,
   "sshAgent": true,
+  "classifier": {
+    "enabled": true,
+    "stage1TimeoutMs": 20000,
+    "stage2TimeoutMs": 30000,
+    "maxRetries": 1
+  },
   "filesystem": {
     ":project": "write",
     ":project/.git": "read",
@@ -168,10 +191,19 @@ Global example (`sshAgent` must be omitted from project config):
 }
 ```
 
-Configuration is strict and paths compile to canonical absolute policy. The
-credential-bearing `sshAgent` setting is global-only: project config fails
-closed if that field appears, while all other project overrides remain
-available.
+Configuration is strict. Paths compile to canonical absolute policy. The
+`sshAgent` and `classifier` settings are global-only. Project configuration
+fails closed if either field is present. Other permitted project settings can
+override global settings.
+
+Omit `classifier.pairs` to use the default Google and OpenAI pairs. A configured
+list replaces the defaults. Each pair has one provider and two stages. Each
+stage specifies a model and a Pi reasoning level. This lets users select models
+that their Pi setup can use. If no complete pair is available, Bubblewrap still
+starts. The extension shows a warning and requires human review for
+model-generated Bash calls.
+See the extension architecture document for the custom pair schema and privacy
+limits.
 
 The default-policy decision protects `:project/.git` as read-only only when a
 `.git` entry exists at session start. This supports both directories and regular
@@ -187,8 +219,10 @@ overrides beneath a denied virtual path, are rejected.
 ### Status and one-command tests
 
 `/sandbox` shows lifecycle state, canonical policy, network settings, private
-`TMPDIR`, grants, and whether SSH is disabled/masked, enabled and mounted, or
-enabled but unavailable.
+`TMPDIR`, grants, SSH capability state, classifier availability, configured
+pairs, and the last sanitized classifier outcome. Direct Pi file tools do not
+use the classifier. They continue to use deterministic path policy and user
+approval.
 
 `/sandbox-test` is the single test command. Its lazy test bridge loads the
 Pi-native unit suite first and then runs the shell integration script through

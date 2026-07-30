@@ -10,11 +10,33 @@ export type CompiledFilesystemPolicy = Readonly<Record<string, FileAccess>> & {
   readonly [compiledPolicyBrand]: true;
 };
 
+export type ClassifierReasoning = "none" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+
+export interface ClassifierStageConfig {
+  readonly model: string;
+  readonly reasoning: ClassifierReasoning;
+}
+
+export interface ClassifierPairConfig {
+  readonly provider: string;
+  readonly stage1: ClassifierStageConfig;
+  readonly stage2: ClassifierStageConfig;
+}
+
+export interface ClassifierConfig {
+  readonly enabled: boolean;
+  readonly pairs: readonly ClassifierPairConfig[];
+  readonly stage1TimeoutMs: number;
+  readonly stage2TimeoutMs: number;
+  readonly maxRetries: number;
+}
+
 export interface RawSandboxConfig {
   readonly enabled: boolean;
   readonly filesystem: RawFilesystemRules;
   readonly isolateNetwork: boolean;
   readonly sshAgent: boolean;
+  readonly classifier: ClassifierConfig;
 }
 
 export interface CompiledSandboxConfig {
@@ -22,6 +44,7 @@ export interface CompiledSandboxConfig {
   readonly filesystem: CompiledFilesystemPolicy;
   readonly isolateNetwork: boolean;
   readonly sshAgent: boolean;
+  readonly classifier: ClassifierConfig;
 }
 
 declare const approvedGrantBrand: unique symbol;
