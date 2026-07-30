@@ -4,6 +4,8 @@
 
 - Keep responses concise, direct, and technical.
 - Use ASD-STE100 Simplified Technical English for all text that people read. This requirement includes documentation, commit messages, comments, user interfaces, and responses.
+- Use semantic line breaks in Markdown prose: put each complete sentence on its own source line and let the renderer wrap it.
+- Do not hard-wrap Markdown prose at a fixed column or split a phrase only to meet a line-length limit.
 - Prefer small, focused changes over broad refactors unless the user asks otherwise.
 - Verify important changes before concluding when a practical check exists.
 - NEVER use LaTeX math syntax, math mode, dollar-sign delimiters (`$...$`, `$$...$$`), or LaTeX escape sequences (such as `\rightarrow`, `\Rightarrow`, `\times`, `\pm`, `\circ`, `\approx`, etc.) anywhere in output formatting or text. Standard TUI environments do not render LaTeX math markup. Use standard Unicode characters (e.g., `→`, `⇒`, `×`, `±`, `°`, `≈`) or plain text instead.
