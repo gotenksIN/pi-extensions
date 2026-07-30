@@ -1,5 +1,6 @@
 import {
   buildDirectSecretAssessment,
+  isClassifierExemptMediaRead,
   isKnownSecretPath,
   isSecretClassifiedTool,
 } from "../direct-secret-evidence.ts";
@@ -11,6 +12,21 @@ const directory = () => "directory" as const;
 test("secret classification covers content-reading and content-writing direct tools", () => {
   for (const tool of ["read", "grep", "write", "edit"]) assert.equal(isSecretClassifiedTool(tool), true);
   for (const tool of ["find", "ls", "bash", "sandbox_access"]) assert.equal(isSecretClassifiedTool(tool), false);
+});
+
+test("media file reads bypass classification from bounded signatures", () => {
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const webm = new Uint8Array([0x1a, 0x45, 0xdf, 0xa3]);
+  const mp4 = new Uint8Array([0, 0, 0, 20, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d]);
+  for (const header of [png, webm, mp4]) {
+    assert.equal(isClassifierExemptMediaRead("read", "/work/renamed.data", file, () => header), true);
+  }
+  const text = new TextEncoder().encode("not media");
+  assert.equal(isClassifierExemptMediaRead("read", "/work/fake.png", file, () => text), false);
+  assert.equal(isClassifierExemptMediaRead("read", "/work/a.svg", file, () => text), false);
+  assert.equal(isClassifierExemptMediaRead("grep", "/work/a.png", file, () => png), false);
+  assert.equal(isClassifierExemptMediaRead("read", "/work/a.png", directory, () => png), false);
+  assert.equal(isClassifierExemptMediaRead("read", "/work/a.png", file, () => undefined), false);
 });
 
 test("secret path rules identify credentials and exempt explicit templates", () => {

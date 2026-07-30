@@ -14,7 +14,11 @@ import {
   type GrantContext,
   type GrantScope,
 } from "./grants.ts";
-import { buildDirectSecretAssessment, isSecretClassifiedTool } from "./direct-secret-evidence.ts";
+import {
+  buildDirectSecretAssessment,
+  isClassifierExemptMediaRead,
+  isSecretClassifiedTool,
+} from "./direct-secret-evidence.ts";
 import type { SandboxDisableSource } from "./process-state.ts";
 import { effectiveAccess, resolveExistingPath } from "./policy.ts";
 import { BubblewrapRuntime, findTrustedBwrap, probeBwrap } from "./runtime.ts";
@@ -192,7 +196,7 @@ class Session implements SandboxSession {
       ctx.ui.setStatus("sandbox", ctx.ui.theme.fg("accent", "bwrap sandbox active"));
       if (classifier.state === "unavailable") {
         ctx.ui.notify(
-          "Safety classification is unavailable. Model-generated Bash, read, grep, write, and edit calls will require human review. Set classifier.pairs in the global sandbox configuration. Set the provider, model, and reasoning level for both stages.",
+          "Safety classification is unavailable. Model-generated Bash, non-media read, grep, write, and edit calls will require human review. Set classifier.pairs in the global sandbox configuration. Set the provider, model, and reasoning level for both stages.",
           "warning",
         );
       } else if (classifier.state === "disabled") {
@@ -297,6 +301,12 @@ class Session implements SandboxSession {
       throw new Error(`Sandbox policy denies ${toolName} access to ${path}`);
     }
     if (!isSecretClassifiedTool(toolName)) return;
+    if (isClassifierExemptMediaRead(toolName, path)) {
+      const gate = this.safetyGate;
+      if (!gate) throw new Error("Safety permit service is unavailable");
+      gate.approveOnce(toolCallId, toolName, input, state.projectCwd);
+      return;
+    }
 
     const classified = await this.classifyDirectTool(toolCallId, toolName, input, path, ctx);
     if (ctx.signal?.aborted) throw new Error("Direct tool safety classification was cancelled");

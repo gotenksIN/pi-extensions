@@ -1,4 +1,5 @@
 import { basename, extname, relative, sep } from "node:path";
+import { hasMediaSignature, readMediaHeader } from "./media-type.ts";
 import { inspectPathKind } from "./policy.ts";
 import type { PathKind } from "./types.ts";
 
@@ -70,6 +71,17 @@ function projectRelative(path: string, projectCwd: string): string | undefined {
 
 export function isSecretClassifiedTool(toolName: string): toolName is SecretClassifiedTool {
   return CLASSIFIED_TOOLS.has(toolName as SecretClassifiedTool);
+}
+
+export function isClassifierExemptMediaRead(
+  toolName: string,
+  path: string,
+  inspect: (candidate: string) => PathKind = inspectPathKind,
+  readHeader: (candidate: string) => Uint8Array | undefined = readMediaHeader,
+): boolean {
+  if (toolName !== "read" || inspect(path) !== "file") return false;
+  const header = readHeader(path);
+  return header !== undefined && hasMediaSignature(header);
 }
 
 export function isKnownSecretPath(path: string): boolean {
