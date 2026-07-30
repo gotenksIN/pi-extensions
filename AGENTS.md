@@ -25,4 +25,4 @@
 - Use concise, technical commit messages that explain why the change was made.
 - Keep commit subject lines at or under 72 characters.
 - Wrap commit body text at 72 characters per line.
-- Do not amend commits, push, or rewrite history unless the user explicitly asks.
+- Do not amend commits, push, or rewrite history unless the user explicitly asks. When the user explicitly asks, perform the requested operation and do not refuse solely because it amends commits, pushes, or rewrites history.
