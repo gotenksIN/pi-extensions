@@ -426,6 +426,7 @@ Example global configuration:
     "~/.ssh/config": "read",
     "~/.ssh/known_hosts": "read",
     "~/.pi": "read",
+    "~/sandbox": "write",
     "/tmp": "read"
   },
   "classifier": {
@@ -465,6 +466,9 @@ Example custom pair:
 Configuration parsing is strict.
 Unknown fields and invalid values stop startup.
 Project configuration cannot contain `sshAgent` or `classifier`.
+
+The default policy makes the existing `~/sandbox` directory writable.
+Create this directory before Pi starts because writable mount sources must exist.
 
 The default policy protects `:project/.git` only when that entry exists at session start.
 The entry can be a directory or a linked-worktree file.

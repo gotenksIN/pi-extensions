@@ -137,7 +137,8 @@ test("project defaults protect only an existing git entry without descendant ass
   assert.equal(defaultPolicyForProjectGitEntry(false).filesystem[":project/.git"], undefined);
 });
 
-test("compatibility defaults keep host tmp read-only and SSH agent enabled", () => {
+test("compatibility defaults keep the workspace writable, host tmp read-only, and SSH agent enabled", () => {
+  assert.equal(DEFAULT_CONFIG.filesystem["~/sandbox"], "write");
   assert.equal(DEFAULT_CONFIG.filesystem["/tmp"], "read");
   assert.equal(DEFAULT_CONFIG.sshAgent, true);
   assert.equal(DEFAULT_CONFIG.isolateNetwork, false);
