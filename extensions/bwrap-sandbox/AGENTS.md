@@ -131,6 +131,19 @@ A grant stays subordinate to `none` and protected runtime paths.
 A direct write can use single-use approval without creating a session grant.
 A persistent grant requires explicit user approval.
 
+`sandbox_access` defaults to `exact` scope.
+Use exact scope only for content changes to an existing path.
+Use parent scope for create, delete, rename, or move operations.
+Parent scope derives the parent from the requested target before canonical path
+validation.
+The requested target can be missing, but the parent mount source must exist.
+Never widen an exact request to its parent automatically.
+The human prompt must show the requested target, selected scope, and resolved
+grant path.
+An exact file bind is an active mount point.
+Linux can return `EBUSY` when a command deletes or renames it.
+A later parent grant cannot remove that exact mount during the session.
+
 The approval broker serializes requests.
 A child session cannot approve its own request.
 A child request fails closed without an interactive parent owner.
@@ -303,6 +316,9 @@ Classifier tests must cover:
 - Stable digests and unsupported values.
 - Direct file tools bypassing classifier invocation.
 - Deterministic direct-path denial and user approval.
+- Exact and parent grant scope selection.
+- Missing targets with existing parents.
+- Parent scope under `none` and protected runtime paths.
 - Bash permit integrity and classifier ordering.
 - Permit consumption, mutation, reuse, and lifecycle invalidation.
 - Unavailable startup warning and human review behavior.
@@ -346,6 +362,7 @@ Do not add:
 - Repository-file ingestion into classifier evidence.
 - Duplicated protected-path or capability checks.
 - Writable parent overlays.
+- Automatic widening from exact grant scope to parent scope.
 - Test fixtures in startup code.
 - Paid startup probes or paid tests.
 - Feature policy in `index.ts`.

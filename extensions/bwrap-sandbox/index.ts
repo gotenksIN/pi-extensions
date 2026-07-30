@@ -36,22 +36,29 @@ export default function sandboxExtension(pi: ExtensionAPI) {
     name: "sandbox_access",
     label: "Sandbox Write Access",
     description:
-      "Request a human-approved write grant for one existing path for this session, then retry a Bubblewrap-blocked command. Policy none entries can never be granted.",
+      "Request a human-approved exact-path or parent-directory write grant for this session, then retry a Bubblewrap-blocked command. Use parent scope for create, delete, rename, and move operations. Policy none entries can never be granted.",
     promptSnippet: "Request a human-approved session write grant before retrying a blocked sandbox operation",
     promptGuidelines: [
-      "Use sandbox_access with a specific existing path when Bubblewrap blocks a required write; do not infer authorization from shell command text.",
+      "Use exact scope for content changes to an existing path.",
+      "Use parent scope for operations that create, delete, rename, or move a directory entry. Do not grant the exact file first because an exact bind mount cannot be deleted or renamed during that session.",
+      "Do not infer authorization from shell command text. Request only the narrow path and scope that the operation requires.",
     ],
     parameters: Type.Object({
-      path: Type.String({ description: "Existing file or directory to make writable, relative to the project or absolute" }),
+      path: Type.String({ description: "Target path, relative to the project or absolute. The target can be missing when scope is parent." }),
+      scope: Type.Optional(Type.Union([
+        Type.Literal("exact"),
+        Type.Literal("parent"),
+      ], { description: "Grant the exact path, or grant its parent directory for directory-entry changes. Default: exact." })),
     }),
     async execute(_id, params) {
-      const result = await session.requestPersistentWrite(params.path);
+      const scope = params.scope ?? "exact";
+      const result = await session.requestPersistentWrite(params.path, scope);
       const text = result.granted
         ? `Granted write access for this session: ${result.path}. Retry the command.`
         : `${result.path} is already writable.`;
       return {
         content: [{ type: "text", text }],
-        details: { path: result.path, granted: result.granted },
+        details: { path: result.path, scope, granted: result.granted },
       };
     },
   });

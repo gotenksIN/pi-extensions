@@ -1,3 +1,4 @@
+import { dirname } from "node:path";
 import { inspectPathKind, resolveExistingPath, configuredAccess, effectiveAccess } from "./policy.ts";
 import { validateWritableRuntimePath, type ProtectedRuntimePaths } from "./layout.ts";
 import type { PathResolver } from "./policy.ts";
@@ -10,6 +11,8 @@ export interface GrantContext {
   readonly protectedPaths: ProtectedRuntimePaths;
   readonly inspect?: (path: string) => PathKind;
 }
+
+export type GrantScope = "exact" | "parent";
 
 export interface WriteAdmission {
   readonly path: string;
@@ -53,6 +56,18 @@ export function validatePersistentGrant(
   resolver?: PathResolver,
 ): WriteAdmission {
   return validateWrite(rawPath, context, grants, true, resolver);
+}
+
+/** Select and validate an exact path or its parent as the persistent bind source. */
+export function validatePersistentGrantRequest(
+  rawPath: string,
+  scope: GrantScope,
+  context: GrantContext,
+  grants: ApprovedWriteGrants,
+  resolver?: PathResolver,
+): WriteAdmission {
+  const grantPath = scope === "parent" ? dirname(rawPath) : rawPath;
+  return validatePersistentGrant(grantPath, context, grants, resolver);
 }
 
 /** Validate one direct write without requiring its target to exist. */

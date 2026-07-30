@@ -101,11 +101,53 @@ The most specific matching path wins.
 The policy compiler resolves paths to canonical absolute paths.
 Invalid paths and ambiguous paths fail closed.
 
-A session write grant applies to one canonical existing path.
+A session write grant applies to one canonical existing mount source.
 The user must approve the grant.
 A grant stays active for the current session only.
 A grant does not override an effective `none` rule.
 A grant does not apply to protected runtime resources.
+
+### Grant scope
+
+The `sandbox_access` tool has an `exact` scope and a `parent` scope.
+The default scope is `exact`.
+Use `exact` to change the content of an existing file or directory.
+The exact path becomes a Bubblewrap bind mount.
+
+Use `parent` to create, delete, rename, or move a directory entry.
+The extension derives the parent from the requested target path.
+It resolves and validates that parent as the mount source.
+The target can be missing when the scope is `parent`.
+
+Linux cannot delete or rename an active mount point.
+If an exact file grant exists, delete or rename can fail with `EBUSY`.
+A later parent grant does not remove the exact mount.
+Reload the session to clear that exact grant.
+Then request only the parent scope.
+
+Parent scope is wider than exact scope.
+The extension never selects it automatically.
+The request must state the scope, and the human prompt shows the resolved grant
+path.
+Both scopes remain subject to `none` rules and protected runtime paths.
+
+Example for file content changes:
+
+```json
+{
+  "path": "/work/config.json",
+  "scope": "exact"
+}
+```
+
+Example for create, delete, rename, or move:
+
+```json
+{
+  "path": "/work/output/new-name.txt",
+  "scope": "parent"
+}
+```
 
 ## Mount order
 

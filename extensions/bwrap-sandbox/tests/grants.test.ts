@@ -3,6 +3,7 @@ import {
   emptyApprovedGrants,
   validateDirectWrite,
   validatePersistentGrant,
+  validatePersistentGrantRequest,
   type GrantContext,
 } from "../grants.ts";
 import type { PathResolver } from "../policy.ts";
@@ -72,6 +73,50 @@ test("protected runtime paths reject persistent grants and single-use direct wri
   assert.throws(
     () => validatePersistentGrant("/etc/ssh", context(), grants, existing),
     /fixed SSH client configuration/,
+  );
+});
+
+test("parent scope grants the existing parent of a missing target", () => {
+  const admission = validatePersistentGrantRequest(
+    "new-file",
+    "parent",
+    context(),
+    emptyApprovedGrants(),
+    missingTarget,
+  );
+  assert.deepEqual(admission, { path: "/work", alreadyWritable: false });
+  assert.throws(
+    () => validatePersistentGrantRequest(
+      "new-file",
+      "exact",
+      context({}, () => "missing"),
+      emptyApprovedGrants(),
+      missingTarget,
+    ),
+    /existing mount source/,
+  );
+});
+
+test("parent scope remains subject to none and protected-path rules", () => {
+  assert.throws(
+    () => validatePersistentGrantRequest(
+      "/work/secret/new-file",
+      "parent",
+      context({ "/work/secret": "none" }),
+      emptyApprovedGrants(),
+      existing,
+    ),
+    /permanently denies/,
+  );
+  assert.throws(
+    () => validatePersistentGrantRequest(
+      "/usr/bin/bwrap",
+      "parent",
+      context(),
+      emptyApprovedGrants(),
+      existing,
+    ),
+    /Bubblewrap executable/,
   );
 });
 

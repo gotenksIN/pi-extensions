@@ -205,6 +205,13 @@ model-generated Bash calls.
 See the extension architecture document for the custom pair schema and privacy
 limits.
 
+`sandbox_access` uses `scope: "exact"` by default. Use exact scope for content
+changes. Use `scope: "parent"` for create, delete, rename, or move operations.
+An exact file grant creates a mount point, so Linux can return `EBUSY` if a later
+command tries to delete or rename that file. Do not grant the exact file first
+for a directory-entry change. Parent scope remains subject to human approval,
+`none` rules, and protected runtime paths.
+
 The default-policy decision protects `:project/.git` as read-only only when a
 `.git` entry exists at session start. This supports both directories and regular
 linked-worktree gitfiles. If it is absent, the rule is omitted and a writable

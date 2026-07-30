@@ -10,8 +10,9 @@ import {
   approvedGrantPaths,
   emptyApprovedGrants,
   validateDirectWrite,
-  validatePersistentGrant,
+  validatePersistentGrantRequest,
   type GrantContext,
+  type GrantScope,
 } from "./grants.ts";
 import { effectiveAccess, resolveExistingPath } from "./policy.ts";
 import { BubblewrapRuntime, findTrustedBwrap, probeBwrap } from "./runtime.ts";
@@ -88,7 +89,7 @@ export interface SandboxSession {
   authorizeDirectWrite(toolName: string, rawPath: string): Promise<void>;
   authorizeBash(toolCallId: string, input: unknown, ctx: ExtensionContext): Promise<void>;
   consumeBashPermit(toolCallId: string, input: unknown): void;
-  requestPersistentWrite(rawPath: string): Promise<PersistentGrantResult>;
+  requestPersistentWrite(rawPath: string, scope: GrantScope): Promise<PersistentGrantResult>;
   status(): SessionStatusSnapshot;
   manualTestExecution(): ManualTestExecution;
 }
@@ -309,16 +310,17 @@ class Session implements SandboxSession {
     gate.consumePermit(toolCallId, "bash", input, this.projectCwd());
   }
 
-  async requestPersistentWrite(rawPath: string): Promise<PersistentGrantResult> {
+  async requestPersistentWrite(rawPath: string, scope: GrantScope): Promise<PersistentGrantResult> {
     let state = this.ready();
-    const admission = validatePersistentGrant(rawPath, this.grantContext(state), state.grants);
+    const admission = validatePersistentGrantRequest(rawPath, scope, this.grantContext(state), state.grants);
     if (admission.alreadyWritable) return { path: admission.path, granted: false };
 
     const choice = await this.approval.request(
       [
         "The model requests write access for this session.",
         `Requested path: ${rawPath}`,
-        `Resolved path: ${admission.path}`,
+        `Grant scope: ${scope}`,
+        `Resolved grant path: ${admission.path}`,
         "This grant will apply to later Bash calls and direct Pi filesystem tools.",
       ].join("\n"),
       ["No - block", "Yes - grant write access for this session"],
