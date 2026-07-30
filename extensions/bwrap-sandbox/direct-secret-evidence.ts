@@ -6,6 +6,7 @@ export type SecretClassifiedTool = "read" | "grep" | "write" | "edit";
 
 export interface DirectSecretEvidence {
   readonly domain: "direct-project-secret-access";
+  readonly pathPolicyPassed: true;
   readonly tool: SecretClassifiedTool;
   readonly operation: "read" | "write";
   readonly target: {
@@ -132,6 +133,7 @@ export function buildDirectSecretAssessment(
   };
   const evidence: DirectSecretEvidence = {
     domain: "direct-project-secret-access",
+    pathPolicyPassed: true,
     tool: toolName,
     operation: toolName === "read" || toolName === "grep" ? "read" : "write",
     target: {

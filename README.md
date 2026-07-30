@@ -117,7 +117,9 @@ containment.
 The extension also has a two-stage classifier for model-generated Bash calls
 and direct `read`, `grep`, `write`, and `edit` calls. Direct-tool classification
 uses only sanitized project-path and operation metadata. It does not send file
-content, grep patterns, edit text, or write payloads to the provider.
+content, grep patterns, edit text, or write payloads to the provider. A target
+outside the current project is not a review reason by itself after deterministic
+path policy passes.
 The classifier is an additional check. Bubblewrap remains the primary security
 boundary. Automatic execution requires `allow` from both classifier stages.
 A review, invalid result, refusal, timeout, or exhausted technical failure opens

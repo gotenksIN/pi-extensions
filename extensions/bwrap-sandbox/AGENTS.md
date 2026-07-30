@@ -277,6 +277,8 @@ Combine secret review and direct write approval in one prompt when both apply.
 Direct-tool classifier evidence must never contain file content, grep patterns,
 edit text, write payloads, raw tool output, or absolute outside-project paths.
 Use project-relative path metadata, byte counts, and local boolean indicators.
+State that deterministic path policy passed. Never treat outside-project scope
+as a review reason without concrete secret or security-sensitive evidence.
 Omit prior action payloads from direct-tool evidence.
 Use a local exact-input digest only for permit integrity.
 Never send that digest as a substitute for secret semantics.

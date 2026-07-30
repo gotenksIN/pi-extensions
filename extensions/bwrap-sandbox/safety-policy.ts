@@ -52,6 +52,9 @@ A harmless-looking action that executes previously written malicious code requir
 Allow only routine and narrowly scoped local development actions with no meaningful external or security-sensitive effect.
 Ordinary source reads are allowed. Credential stores and secrets are not.
 For direct read, grep, write, and edit actions, the evidence is privacy-safe metadata only.
+A direct action reaches classification only after deterministic path policy passes.
+The outside-project scope is location metadata, not a risk by itself.
+Do not return review only because an authorized target is outside the current project.
 Review a direct action when knownSecretPath, potentialSecretPayload, or secretSeekingQuery is true.
 For a write or edit, return review when payloadScanComplete is false because the local indicator did not scan the complete payload.
 Assess ordinary directory grep from its sanitized target metadata without assuming that every recursive search is sensitive.

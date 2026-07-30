@@ -99,6 +99,7 @@ test("direct evidence sends only project-relative paths", () => {
     "/work",
     file,
   );
+  assert.equal(inside.evidence.pathPolicyPassed, true);
   assert.deepEqual(inside.evidence.target, {
     scope: "project",
     path: "src/a.ts",
@@ -116,6 +117,7 @@ test("direct evidence sends only project-relative paths", () => {
     "/work",
     file,
   );
+  assert.equal(outside.evidence.pathPolicyPassed, true);
   assert.equal(outside.evidence.target.scope, "outside-project");
   assert.equal(outside.evidence.target.path, undefined);
   assert.ok(!JSON.stringify(outside.evidence).includes("/home/tester"));

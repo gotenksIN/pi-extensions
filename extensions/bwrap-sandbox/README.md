@@ -353,12 +353,14 @@ Bash evidence can contain:
 - Counts for omitted historical items.
 
 Direct-tool evidence contains recent user-role text and sanitized action
-metadata. It can contain the operation, project-relative target path, basename,
-extension, path kind, numeric read range, payload byte count, bounded-scan
+metadata. It states that deterministic path policy passed. It can contain the
+operation, project-relative target path, basename, extension, path kind, numeric
+read range, payload byte count, bounded-scan
 completeness, and local boolean indicators. It omits prior action payloads.
 
 Direct-tool evidence never contains file content, grep patterns, edit text,
 write payloads, absolute outside-project paths, or raw tool output.
+An outside-project scope is not a review reason by itself.
 A local digest binds approval to the complete exact input but is not sent to the
 provider.
 
