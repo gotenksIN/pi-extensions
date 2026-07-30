@@ -2,8 +2,7 @@
 
 Read `README.md` completely before you modify this extension.
 The README is the authoritative architecture and threat model.
-Keep the implementation, README, root user documentation, status output, and
-tests consistent.
+Keep the implementation, README, root user documentation, status output, and tests consistent.
 
 ## System purpose
 
@@ -16,8 +15,7 @@ This extension has four security layers:
 
 Bubblewrap is the primary boundary.
 The classifier is defense in depth.
-No classifier result can change policy, mounts, capabilities, grants, or runtime
-validation.
+No classifier result can change policy, mounts, capabilities, grants, or runtime validation.
 
 The extension also checks Pi file tools that run in the host process.
 These checks are application-level permission logic.
@@ -25,8 +23,7 @@ They are not OS containment.
 
 ## Trust boundaries
 
-Trust the Pi host process, extension code, trusted configuration, root-owned
-Bubblewrap executable, and the user who answers approval requests.
+Trust the Pi host process, extension code, trusted configuration, root-owned Bubblewrap executable, and the user who answers approval requests.
 Treat sandboxed commands and their children as untrusted.
 
 For classifier work, also treat these values as untrusted:
@@ -52,8 +49,14 @@ For a model-generated Bash call, preserve this order:
 3. If automatic approval stops, ask the human about the exact call.
 4. Execute an approved call through the existing Bubblewrap runtime.
 
-For `read`, `grep`, `write`, and `edit`, apply deterministic path policy before
-the classifier. Use only deterministic path policy for `find` and `ls`.
+For `read`, `grep`, `write`, and `edit`, apply deterministic path policy before the classifier.
+After policy allows a resolved regular media file, skip classifier inference for `read` and create the exact single-use execution permit locally.
+Detect media from a bounded local header and known binary signatures.
+Do not trust filename extensions.
+Do not send the header to a provider.
+SVG, unknown, ambiguous, and unreadable files must continue through classification.
+Do not apply this exception to directories, `grep`, writes, or edits.
+Use only deterministic path policy for `find` and `ls`.
 For a direct write, ask for user approval when policy requires it.
 For `sandbox_access`, use deterministic grant validation and user approval.
 A user approval does not skip Bubblewrap.
@@ -61,51 +64,39 @@ A user approval does not skip Bubblewrap.
 Trusted `user_bash` and `/sandbox-test` bypass classifier calls.
 They still use Bubblewrap.
 
-Read-only local inspection is routine. Do not make the classifier review
-`git status`, `git diff`, `git diff --check`, `git diff --stat`, `git log`,
-`git show`, or `git rev-parse` only because the repository contains sensitive
-code or history, or because a later separate action may push. Classify the
-exact current command. Keep review for Git commands that change files, refs,
-hooks, remotes, or external services.
+Read-only local inspection is routine.
+Do not make the classifier review `git status`, `git diff`, `git diff --check`, `git diff --stat`, `git log`, `git show`, or `git rev-parse` only because the repository contains sensitive code or history, or because a later separate action may push.
+Classify the exact current command.
+Keep review for Git commands that change files, refs, hooks, remotes, or external services.
 
 ## Ownership and dependency direction
 
 ### Filesystem and runtime
 
-- `types.ts` defines branded policy, grants, capabilities, operations, classifier
-  configuration, and status types.
-- `policy.ts` alone canonicalizes paths, compiles policy, and calculates effective
-  access.
+- `types.ts` defines branded policy, grants, capabilities, operations, classifier configuration, and status types.
+- `policy.ts` alone canonicalizes paths, compiles policy, and calculates effective access.
 - `layout.ts` owns fixed trusted host paths and namespace destinations.
 - `grants.ts` alone validates and constructs approved write grants.
-- `capabilities.ts` alone validates runtime resources, private temporary storage,
-  inherited SSH agent state, and capability-coupled environment values.
-- `mount-plan.ts` consumes compiled policy, approved grants, and runtime
-  capabilities. It emits deterministic mount operations.
-- `runtime.ts` owns the private resource tree, Bubblewrap process creation,
-  cancellation, timeout, reaping, and cleanup.
+- `capabilities.ts` alone validates runtime resources, private temporary storage, inherited SSH agent state, and capability-coupled environment values.
+- `mount-plan.ts` consumes compiled policy, approved grants, and runtime capabilities. It emits deterministic mount operations.
+- `runtime.ts` owns the private resource tree, Bubblewrap process creation, cancellation, timeout, reaping, and cleanup.
 
 ### Authorization and classifier
 
 - `approval.ts` owns the shared parent and subagent approval broker.
 - `direct-gate.ts` identifies direct Pi filesystem tools. Keep it deterministic.
-- `safety-policy.ts` owns prompts, risk categories, structured decision
-  contracts, fixed limits, and semantic decision validation.
-- `safety-evidence.ts` alone reads the active branch and builds bounded evidence.
-  It also owns canonical serialization and action digests.
-- `classifier-provider.ts` alone resolves Pi models and authentication and invokes
-  one classifier stage through Pi's provider implementation.
-- `classifier.ts` owns pair availability, two-stage conjunction, and technical
-  fallback.
+- `media-type.ts` reads a bounded local header and detects known binary media signatures for the classifier exception.
+- `safety-policy.ts` owns prompts, risk categories, structured decision contracts, fixed limits, and semantic decision validation.
+- `safety-evidence.ts` alone reads the active branch and builds bounded evidence. It also owns canonical serialization and action digests.
+- `classifier-provider.ts` alone resolves Pi models and authentication and invokes one classifier stage through Pi's provider implementation.
+- `classifier.ts` owns pair availability, two-stage conjunction, and technical fallback.
 - `safety-gate.ts` owns Bash authorization and single-use execution permits.
-- `session.ts` composes configuration, runtime, grants, approval, classifier,
-  and lifecycle state. Do not put provider-specific policy in this file.
+- `session.ts` composes configuration, runtime, grants, approval, classifier, and lifecycle state. Do not put provider-specific policy in this file.
 - `commands.ts` formats status and starts the native test command.
 - `index.ts` only registers Pi surfaces and delegates to owners.
 
 Dependencies flow from lifecycle and registration modules to narrow owners.
-Do not import classifier modules from `policy.ts`, `layout.ts`, `grants.ts`,
-`capabilities.ts`, `mount-plan.ts`, or `runtime.ts`.
+Do not import classifier modules from `policy.ts`, `layout.ts`, `grants.ts`, `capabilities.ts`, `mount-plan.ts`, or `runtime.ts`.
 Do not move feature logic into `index.ts`.
 
 ## Filesystem invariants
@@ -118,11 +109,9 @@ Required parent remounts run deepest-first.
 
 A `none` rule is final.
 A grant cannot override it.
-A runtime capability cannot override an exact veto unless the documented closed
-capability construction explicitly defines that behavior.
+A runtime capability cannot override an exact veto unless the documented closed capability construction explicitly defines that behavior.
 
-For denied parents with allowed children, use an empty scaffold and exact child
-binds.
+For denied parents with allowed children, use an empty scaffold and exact child binds.
 Never bind a broad host parent to expose one child.
 Never use a writable parent overlay to bypass policy.
 
@@ -141,12 +130,10 @@ A persistent grant requires explicit user approval.
 `sandbox_access` defaults to `exact` scope.
 Use exact scope only for content changes to an existing path.
 Use parent scope for create, delete, rename, or move operations.
-Parent scope derives the parent from the requested target before canonical path
-validation.
+Parent scope derives the parent from the requested target before canonical path validation.
 The requested target can be missing, but the parent mount source must exist.
 Never widen an exact request to its parent automatically.
-The human prompt must show the requested target, selected scope, and resolved
-grant path.
+The human prompt must show the requested target, selected scope, and resolved grant path.
 An exact file bind is an active mount point.
 Linux can return `EBUSY` when a command deletes or renames it.
 A later parent grant cannot remove that exact mount during the session.
@@ -154,14 +141,13 @@ A later parent grant cannot remove that exact mount during the session.
 The approval broker serializes requests.
 A child session cannot approve its own request.
 A child request fails closed without an interactive parent owner.
-Render forwarded approval as a focused overlay so it remains visible above a
-child conversation viewer. Overlay state is a display control only. It must not
-grant access or affect validation.
+Render forwarded approval as a focused overlay so it remains visible above a child conversation viewer.
+Overlay state is a display control only.
+It must not grant access or affect validation.
 Lifecycle changes invalidate stale approval results.
 
 An explicit parent `--no-sandbox` flag is process-wide.
-Propagate it to subagent sessions through opaque `globalThis` state with a
-versioned `Symbol.for` key.
+Propagate it to subagent sessions through opaque `globalThis` state with a versioned `Symbol.for` key.
 Do not let a child session re-enable the sandbox after the parent CLI opt-out.
 Keep this marker monotonic until process exit.
 
@@ -188,10 +174,8 @@ Do not copy or interpret the host system SSH include graph.
 
 The default ordered pairs are:
 
-1. `google/gemini-3.5-flash-lite` with `minimal`, then
-   `google/gemini-3.6-flash` with `low`.
-2. `openai/gpt-5.4-nano` with `none`, then
-   `openai/gpt-5.4-mini` with `low`.
+1. `google/gemini-3.5-flash-lite` with `minimal`, then `google/gemini-3.6-flash` with `low`.
+2. `openai/gpt-5.4-nano` with `none`, then `openai/gpt-5.4-mini` with `low`.
 
 The arrow is stage order.
 It is not fallback between individual models.
@@ -199,15 +183,13 @@ Each pair has one provider and two stages.
 Both valid approvals must come from one complete pair.
 
 Defaults are not a model allowlist.
-Global trusted configuration can replace the list with arbitrary Pi-available
-same-provider pairs and reasoning levels.
+Global trusted configuration can replace the list with arbitrary Pi-available same-provider pairs and reasoning levels.
 A configured list replaces all defaults.
 Project configuration cannot set classifier options.
 
 Use Pi's model registry and Pi provider implementations.
 Resolve request authentication through Pi for each request.
-Forward Pi's API key, headers, environment, and base URL as required by the
-provider interface.
+Forward Pi's API key, headers, environment, and base URL as required by the provider interface.
 Do not add provider SDKs.
 Do not add API-key configuration.
 Do not read credentials directly from environment variables or auth files.
@@ -219,12 +201,10 @@ Warn the user and require human review for model-generated Bash calls.
 Recheck availability at request time.
 
 Fallback is for technical failure only.
-Examples include a missing model, unavailable authentication, or provider
-transport failure.
+Examples include a missing model, unavailable authentication, or provider transport failure.
 A fallback pair starts again at Stage 1.
 Discard partial approval from a failed pair.
-Never fall back after a valid `review`, invalid structured output, refusal,
-timeout, or cancellation.
+Never fall back after a valid `review`, invalid structured output, refusal, timeout, or cancellation.
 Send all non-cancellation blocked results to the shared human approval channel.
 A human allow creates a single-use approval for one exact Bash call.
 It does not create a write grant or change Bubblewrap policy.
@@ -238,11 +218,9 @@ Do not include tool-result content.
 Do not treat assistant content or prior actions as authorization.
 
 Use the active session branch.
-Keep only bounded user-role text, current action data, bounded prior action data,
-and omission counts.
+Keep only bounded user-role text, current action data, bounded prior action data, and omission counts.
 Do not silently truncate the current action.
-Block values that are too large, cyclic, non-JSON, or otherwise unsafe to
-serialize.
+Block values that are too large, cyclic, non-JSON, or otherwise unsafe to serialize.
 Use stable key ordering for the action digest.
 
 Never log or persist these values:
@@ -254,8 +232,8 @@ Never log or persist these values:
 - Classifier reasoning.
 - Provider errors that can contain request data.
 
-Diagnostics can contain provider and model labels, stage number, and a normalized
-outcome category. Keep semantic reasons out of persistent status and logs.
+Diagnostics can contain provider and model labels, stage number, and a normalized outcome category.
+Keep semantic reasons out of persistent status and logs.
 
 ## Decision invariants
 
@@ -263,10 +241,8 @@ Automatic execution requires Stage 1 `allow` and Stage 2 `allow`.
 Any other non-cancellation result requires human review.
 Cancellation blocks the action.
 
-Require exactly one correctly named decision tool call or equivalent strict Pi
-structured result.
-Reject prose answers, extra fields, multiple calls, unknown enums, incomplete
-output, and oversized fields.
+Require exactly one correctly named decision tool call or equivalent strict Pi structured result.
+Reject prose answers, extra fields, multiple calls, unknown enums, incomplete output, and oversized fields.
 Require a bounded concise reason from both classifier stages.
 Reject Stage 2 `allow` when severity or risks contradict the decision.
 Never execute a classifier-generated tool call.
@@ -279,26 +255,23 @@ Classify model-generated `bash`, `read`, `grep`, `write`, and `edit` tool calls.
 Use deterministic path policy before direct-tool classification.
 Use only deterministic path policy for `find` and `ls`.
 Keep the existing user approval flow for direct writes and `sandbox_access`.
+Keep the media-read classifier exception after deterministic path policy and before provider inference.
+Preserve exact permit binding and consumption.
 Combine secret review and direct write approval in one prompt when both apply.
 
-Direct-tool classifier evidence must never contain file content, grep patterns,
-edit text, write payloads, raw tool output, or absolute outside-project paths.
+Direct-tool classifier evidence must never contain file content, grep patterns, edit text, write payloads, raw tool output, or absolute outside-project paths.
 Use project-relative path metadata, byte counts, and local boolean indicators.
-State that deterministic path policy passed. Never treat outside-project scope
-as a review reason without concrete secret or security-sensitive evidence.
+State that deterministic path policy passed.
+Never treat outside-project scope as a review reason without concrete secret or security-sensitive evidence.
 Omit prior action payloads from direct-tool evidence.
 Use a local exact-input digest only for permit integrity.
 Never send that digest as a substitute for secret semantics.
 Document that path-only detection cannot find all secrets in ordinary files.
 
 Pi tool-call input is mutable.
-For extension-owned `bash`, `read`, `grep`, `write`, and `edit`, create a
-single-use permit after two classifier allows or one explicit human review
-approval.
-The permit must cover tool call ID, tool name, canonical final input, working
-directory, and lifecycle generation.
-Wrap each classified built-in tool and consume the permit immediately before
-execution.
+For extension-owned `bash`, `read`, `grep`, `write`, and `edit`, create a single-use permit after two classifier allows or one explicit human review approval.
+The permit must cover tool call ID, tool name, canonical final input, working directory, and lifecycle generation.
+Wrap each classified built-in tool and consume the permit immediately before execution.
 Reject a missing, changed, expired, or reused permit.
 Clear all permits on session start and shutdown.
 
@@ -324,8 +297,7 @@ Import each test module from `tests/run.ts`.
 Keep `/sandbox-test` as the single test command.
 Do not add a separate regression suite or runner.
 
-Use injected filesystem inspectors, model registries, provider calls, clocks, and
-approval channels.
+Use injected filesystem inspectors, model registries, provider calls, clocks, and approval channels.
 Unit tests must not require Bubblewrap.
 Unit tests must never contact a live model provider.
 
@@ -360,8 +332,7 @@ Classifier tests must cover:
 
 Keep the shell integration test focused on real Bubblewrap behavior.
 Do not add provider calls to it.
-A live containment claim requires a successful integration run on the target
-system.
+A live containment claim requires a successful integration run on the target system.
 
 ## Required review checklist
 

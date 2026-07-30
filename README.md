@@ -5,16 +5,15 @@ This repository contains the extensions used in the author's Pi setup.
 
 ## Install the complete setup
 
-The tracked [`settings.json`](settings.json) contains the extension package,
-the Catppuccin theme package, and the `pi-subagents` package. Copy it to the Pi
-agent directory to install and configure the complete setup:
+The tracked [`settings.json`](settings.json) contains the extension package, the Catppuccin theme package, and the `pi-subagents` package.
+Copy it to the Pi agent directory to install and configure the complete setup:
 
 ```bash
 cp settings.json ~/.pi/agent/settings.json
 ```
 
-This replaces the destination settings file. Back up your current file first if
-it contains settings that you need to keep.
+This replaces the destination settings file.
+Back up your current file first if it contains settings that you need to keep.
 
 Link this repository's agent rules into Pi's global agent configuration:
 
@@ -22,13 +21,13 @@ Link this repository's agent rules into Pi's global agent configuration:
 ln -sfn "$PWD/AGENTS.md" "$HOME/.pi/agent/AGENTS.md"
 ```
 
-Run this command from the repository root. It replaces the existing global
-`AGENTS.md` link or file. Keep the link in place so Pi and its agents use the
-repository rules.
+Run this command from the repository root.
+It replaces the existing global `AGENTS.md` link or file.
+Keep the link in place so Pi and its agents use the repository rules.
 
-Pi may need a JavaScript package manager when it installs a Git package. The
-standalone Pi binary does not include Node.js or npm. Install Bun temporarily
-when required:
+Pi may need a JavaScript package manager when it installs a Git package.
+The standalone Pi binary does not include Node.js or npm.
+Install Bun temporarily when required:
 
 ```bash
 (
@@ -56,8 +55,7 @@ when required:
 )
 ```
 
-If `pi-subagents` failed to install before Bun was available, install its
-production dependencies directly:
+If `pi-subagents` failed to install before Bun was available, install its production dependencies directly:
 
 ```bash
 cd ~/.pi/agent/git/github.com/tintinweb/pi-subagents
@@ -82,24 +80,20 @@ Update installed extension packages later with:
 pi update --extensions
 ```
 
-Pi packages run with your user permissions. Review package source before you
-install it.
+Pi packages run with your user permissions.
+Review package source before you install it.
 
 ## Extensions
 
 Each extension has two documents:
 
-- `README.md` is for users. It explains purpose, installation, configuration,
-  commands, tools, and visible behavior.
-- `AGENTS.md` is for coding agents. It explains module ownership,
-  implementation details, invariants, and change checks.
+- `README.md` is for users. It explains purpose, installation, configuration, commands, tools, and visible behavior.
+- `AGENTS.md` is for coding agents. It explains module ownership, implementation details, invariants, and change checks.
 
-| Extension | Purpose | Documentation |
-| --- | --- | --- |
-| `bwrap-sandbox` | Linux Bubblewrap boundary and approval gate for Bash and selected Pi file tools. | [User guide](extensions/bwrap-sandbox/README.md) |
-| `delete-session` | Confirmed deletion of the current session file followed by a new session. | [User guide](extensions/delete-session/README.md) |
-| `keybinding-shortcuts` | OpenCode-style slash-command and word-deletion shortcuts for the Pi TUI editor. | [User guide](extensions/keybinding-shortcuts/README.md) |
-| `websearch` | Provider-native grounded web search with citations and ordered fallback. | [User guide](extensions/websearch/README.md) |
+- [`bwrap-sandbox`](extensions/bwrap-sandbox/README.md) provides a Linux Bubblewrap boundary and approval gate for Bash and selected Pi file tools.
+- [`delete-session`](extensions/delete-session/README.md) deletes the current session file after confirmation and starts a new session.
+- [`keybinding-shortcuts`](extensions/keybinding-shortcuts/README.md) adds OpenCode-style command and word-deletion shortcuts to the Pi TUI editor.
+- [`websearch`](extensions/websearch/README.md) provides provider-native grounded web search with citations and ordered fallback.
 
 Read the matching `AGENTS.md` before you change an extension.
 
@@ -107,8 +101,8 @@ Read the matching `AGENTS.md` before you change an extension.
 
 ### Bubblewrap sandbox
 
-`bwrap-sandbox` is Linux-only. It requires a trusted, root-owned `bubblewrap`
-installation:
+`bwrap-sandbox` is Linux-only.
+It requires a trusted, root-owned `bubblewrap` installation:
 
 ```bash
 # Debian or Ubuntu
@@ -122,10 +116,9 @@ sudo dnf install bubblewrap
 sudo pacman -S bubblewrap
 ```
 
-The extension starts from a read-only host root and uses deterministic path
-policy, Bubblewrap mounts, user-approved session grants, and a two-stage
-classifier. Bubblewrap is the primary security boundary. Read its [user
-guide](extensions/bwrap-sandbox/README.md) before you configure it.
+The extension starts from a read-only host root and uses deterministic path policy, Bubblewrap mounts, user-approved session grants, and a two-stage classifier.
+Bubblewrap is the primary security boundary.
+Read its [user guide](extensions/bwrap-sandbox/README.md) before you configure it.
 
 The extension's global configuration is:
 
@@ -142,41 +135,38 @@ Trusted project configuration is:
 The extension provides `/sandbox`, `/sandbox-test`, and `sandbox_access`.
 These surfaces and their safety rules are documented in the extension guide.
 
-Starting Pi with `--no-sandbox` disables the sandbox for the parent and all
-subagent sessions in that Pi process. A child cannot restore it silently.
+Starting Pi with `--no-sandbox` disables the sandbox for the parent and all subagent sessions in that Pi process.
+A child cannot restore it silently.
 
 ### Web search
 
 `websearch` registers `websearch_cited`.
-It uses Pi's model registry and authentication. It does not need separate API
-keys. Its global and project configuration files are:
+It uses Pi's model registry and authentication.
+It does not need separate API keys.
+Its global and project configuration files are:
 
 ```text
 ~/.pi/agent/extensions/websearch.json
 .pi/websearch.json
 ```
 
-Read the [websearch user guide](extensions/websearch/README.md) for model
-fallback, tool parameters, provider behavior, and errors.
+Read the [websearch user guide](extensions/websearch/README.md) for model fallback, tool parameters, provider behavior, and errors.
 
 ### Delete session
 
-`delete-session` registers `/delete`. The command asks for confirmation, waits
-for Pi to become idle, removes the current session file, and starts a new
-session. It does nothing for an ephemeral session.
+`delete-session` registers `/delete`.
+The command asks for confirmation, waits for Pi to become idle, removes the current session file, and starts a new session.
+It does nothing for an ephemeral session.
 
-Read the [delete-session user guide](extensions/delete-session/README.md) for
-installation and use.
+Read the [delete-session user guide](extensions/delete-session/README.md) for installation and use.
 
 ### Keybinding shortcuts
 
-`keybinding-shortcuts` replaces the editor component only in TUI mode. It maps
-`ctrl+p` to Pi's slash-command menu, and maps `ctrl+backspace` and
-`ctrl+delete` to word deletion.
+`keybinding-shortcuts` replaces the editor component only in TUI mode.
+It maps `ctrl+p` to Pi's slash-command menu, and maps `ctrl+backspace` and `ctrl+delete` to word deletion.
 
-The extension needs the conflicting default `ctrl+p` actions removed from
-`~/.pi/agent/keybindings.json`. Read the [keybinding user
-guide](extensions/keybinding-shortcuts/README.md) for the exact entries.
+The extension needs the conflicting default `ctrl+p` actions removed from `~/.pi/agent/keybindings.json`.
+Read the [keybinding user guide](extensions/keybinding-shortcuts/README.md) for the exact entries.
 
 ## Repository development
 
@@ -184,9 +174,8 @@ The extension source is under `extensions/`.
 Keep user documentation and agent documentation in the same extension folder.
 Keep the root README focused on setup and the extension index.
 
-Use the repository's existing Pi-native test commands for extensions that
-provide them. For `bwrap-sandbox`, run `/sandbox-test` inside Pi. It runs the
-native unit tests and the live Bubblewrap integration checks.
+Use the repository's existing Pi-native test commands for extensions that provide them.
+For `bwrap-sandbox`, run `/sandbox-test` inside Pi.
+It runs the native unit tests and the live Bubblewrap integration checks.
 
-Do not commit credentials, provider responses, session files, or generated
-runtime resources.
+Do not commit credentials, provider responses, session files, or generated runtime resources.

@@ -55,7 +55,8 @@ Project configuration:
 .pi/websearch.json
 ```
 
-Project values merge over global values. The extension accepts an ordered `models` list:
+Project values merge over global values.
+The extension accepts an ordered `models` list:
 
 ```json
 {
@@ -99,7 +100,8 @@ The extension also accepts OpenAI request options:
 ```
 
 Supported providers are `google` and `openai`.
-Invalid model entries are ignored. If no valid custom model entry remains, the default list is used.
+Invalid model entries are ignored.
+If no valid custom model entry remains, the default list is used.
 The selected models must exist in Pi's model registry and must have valid Pi authentication.
 
 ## Tool parameters
