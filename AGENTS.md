@@ -24,7 +24,10 @@
 
 - Never create commits unless the user explicitly asks for them.
 - When the user requests per-task commits, commit each discrete task before starting the next one.
-- Before committing, inspect `git status`, `git diff`, and `git log -10`; stage only files that belong to the current task.
+- Before every commit, run the exact full commands `git status`, `git diff`, and `git log -10`.
+- Do not replace these required inspections with abbreviated variants such as `git status --short`, `git diff --stat`, or `git log --oneline`.
+- Read the full commit messages from `git log -10`, including their bodies, and follow the repository's existing commit-message style.
+- Stage only files that belong to the current task.
 - Use concise, technical commit messages that explain why the change was made.
 - Keep commit subject lines at or under 72 characters.
 - Wrap commit body text at 72 characters per line.
