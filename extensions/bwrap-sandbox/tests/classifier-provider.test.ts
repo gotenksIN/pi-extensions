@@ -42,6 +42,7 @@ test("Pi classifier invocation reuses resolved auth and provider transport", asy
   assert.deepEqual(capture.options.env, { REGION: "test" });
   assert.equal(capture.options.reasoning, "minimal");
   assert.equal(capture.options.maxRetries, 1);
+  assert.equal(capture.options.maxTokens, 256);
   assert.ok(capture.context.messages[0].content.includes("Only proposedAction may run now"));
   assert.ok(capture.context.messages[0].content.includes("completedPriorActions already finished"));
 });
@@ -61,6 +62,7 @@ test("none reasoning omits the Pi reasoning option", async () => {
   });
   assert.equal(outcome.kind, "decision");
   assert.equal(Object.hasOwn(capture.options, "reasoning"), false);
+  assert.equal(capture.options.maxTokens, 2_048);
   assert.ok(capture.context.messages[0].content.includes("Only proposedAction may run now"));
   assert.ok(capture.context.messages[0].content.includes("completedPriorActions already finished"));
 });

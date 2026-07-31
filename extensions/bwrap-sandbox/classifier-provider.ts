@@ -150,7 +150,7 @@ async function invoke<T extends Stage1Decision | Stage2Decision>(
         ...(input.resolved.auth.headers ? { headers: input.resolved.auth.headers } : {}),
         ...(input.resolved.auth.env ? { env: input.resolved.auth.env } : {}),
         ...(reasoning ? { reasoning } : {}),
-        maxTokens: stage1 ? 128 : 512,
+        maxTokens: stage1 ? 256 : 2_048,
         maxRetries: input.maxRetries,
         timeoutMs: input.timeoutMs,
         cacheRetention: "none",
