@@ -185,6 +185,7 @@ test("configured sandbox directory rejects an existing non-directory", () => {
 test("compatibility defaults keep the workspace writable, host tmp read-only, and SSH agent enabled", () => {
   assert.equal(DEFAULT_CONFIG.sandboxDirectory, "~/sandbox");
   assert.equal(DEFAULT_CONFIG.filesystem["~/sandbox"], undefined);
+  assert.equal(DEFAULT_CONFIG.filesystem["~/.local/lib/pi"], "read");
   assert.equal(DEFAULT_CONFIG.filesystem["/tmp"], "read");
   assert.equal(DEFAULT_CONFIG.sshAgent, true);
   assert.equal(DEFAULT_CONFIG.isolateNetwork, false);

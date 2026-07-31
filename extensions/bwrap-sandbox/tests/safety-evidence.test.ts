@@ -95,6 +95,12 @@ test("classifier policy separates completed actions from the proposed action", (
   assert.ok(CLASSIFIER_POLICY.includes("must not be attributed to the proposed action"));
 });
 
+test("classifier policy does not invent secrets from outside-project location", () => {
+  assert.ok(CLASSIFIER_POLICY.includes("Absolute outside-project paths are intentionally omitted"));
+  assert.ok(CLASSIFIER_POLICY.includes("When knownSecretPath is false"));
+  assert.ok(CLASSIFIER_POLICY.includes("generic filename, hidden parent directory, or configuration-file extension"));
+});
+
 test("classifier decision validation rejects extra and contradictory fields", () => {
   assert.deepEqual(
     parseStage1Decision({ decision: "allow", reason: "Routine local action." }),

@@ -271,6 +271,7 @@ Direct-tool classifier evidence must never contain file content, grep patterns, 
 Use project-relative path metadata, byte counts, and local boolean indicators.
 State that deterministic path policy passed.
 Never treat outside-project scope as a review reason without concrete secret or security-sensitive evidence.
+Do not infer a credential path from an omitted absolute path when the local `knownSecretPath` result is false.
 Omit prior action payloads from direct-tool evidence.
 Use a local exact-input digest only for permit integrity.
 Never send that digest as a substitute for secret semantics.
@@ -292,6 +293,7 @@ Project configuration can modify only permitted project-scoped settings.
 Reject project `sshAgent`, `sandboxDirectory`, and `classifier` fields even for trusted projects.
 The global `sandboxDirectory` defaults to `~/sandbox` and adds one optional writable directory when it exists.
 Omit this generated rule when the directory is missing, but keep explicit writable filesystem rules strict.
+Keep the installed Pi package path `~/.local/lib/pi` explicitly read-only by default when it exists.
 
 An omitted classifier pair list uses defaults.
 An explicit list replaces defaults.

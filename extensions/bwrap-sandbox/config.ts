@@ -50,6 +50,7 @@ export const DEFAULT_CONFIG: RawSandboxConfig = {
     "~/.ssh/id_rsa.pub": "read",
     "~/.ssh/id_dsa.pub": "read",
     "~/.pi": "read",
+    "~/.local/lib/pi": "read",
     "/tmp": "read",
   },
 };

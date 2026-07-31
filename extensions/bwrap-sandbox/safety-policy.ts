@@ -59,7 +59,9 @@ Ordinary source reads are allowed. Credential stores and secrets are not.
 For direct read, grep, write, and edit actions, the evidence is privacy-safe metadata only.
 A direct action reaches classification only after deterministic path policy passes.
 The outside-project scope is location metadata, not a risk by itself.
-Do not return review only because an authorized target is outside the current project.
+Absolute outside-project paths are intentionally omitted from classifier evidence.
+Do not infer that an omitted path is a credential path or return review only because an authorized target is outside the current project.
+When knownSecretPath is false, do not override that local result based only on a generic filename, hidden parent directory, or configuration-file extension.
 Review a direct action when knownSecretPath, potentialSecretPayload, or secretSeekingQuery is true.
 For a write or edit, return review when payloadScanComplete is false because the local indicator did not scan the complete payload.
 Assess ordinary directory grep from its sanitized target metadata without assuming that every recursive search is sensitive.

@@ -380,6 +380,7 @@ It omits prior action payloads.
 
 Direct-tool evidence never contains file content, grep patterns, edit text, write payloads, absolute outside-project paths, or raw tool output.
 An outside-project scope is not a review reason by itself.
+The classifier must not infer a credential path from an omitted absolute path when the local `knownSecretPath` result is false.
 A local digest binds approval to the complete exact input but is not sent to the provider.
 
 The evidence labels the current proposal separately from completed prior actions.
@@ -459,6 +460,7 @@ Example global configuration:
     "~/.ssh/config": "read",
     "~/.ssh/known_hosts": "read",
     "~/.pi": "read",
+    "~/.local/lib/pi": "read",
     "/tmp": "read"
   },
   "classifier": {
@@ -505,6 +507,7 @@ The extension resolves the configured path to a canonical directory before it st
 If the directory does not exist, the extension omits this optional write rule and continues to start.
 An existing non-directory or an invalid path still stops startup.
 Explicit writable entries in `filesystem` remain strict and must exist.
+The default policy explicitly mounts the installed Pi package at `~/.local/lib/pi` as read-only when that path exists.
 
 The default policy protects `:project/.git` only when that entry exists at session start.
 The entry can be a directory or a linked-worktree file.
