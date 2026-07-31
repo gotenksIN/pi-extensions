@@ -1,6 +1,6 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { authorizeDirectTool, isDirectFilesystemTool, type DirectAuthorizationSession } from "../direct-gate.ts";
-import { isSecretClassifiedTool } from "../direct-secret-evidence.ts";
+import { isSecretCheckedTool } from "../direct-secret-evidence.ts";
 import { assert, test } from "./harness.ts";
 
 test("direct gate routes structured read and write access classes", async () => {
@@ -41,6 +41,6 @@ test("direct gate keeps find and ls deterministic and recognizes only filesystem
     assert.equal(isDirectFilesystemTool(tool), true);
   }
   assert.equal(isDirectFilesystemTool("Agent"), false);
-  assert.equal(isSecretClassifiedTool("find"), false);
-  assert.equal(isSecretClassifiedTool("ls"), false);
+  assert.equal(isSecretCheckedTool("find"), false);
+  assert.equal(isSecretCheckedTool("ls"), false);
 });

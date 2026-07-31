@@ -3,7 +3,7 @@ import { PiClassifierStageInvoker, type ClassifierModelRegistry } from "./classi
 import { buildSafetyEvidence, actionDigest, type SafetyAction } from "./safety-evidence.ts";
 import type { ClassifierConfig } from "./types.ts";
 
-const CLASSIFIED_TOOLS = new Set(["bash", "read", "grep", "write", "edit"]);
+const CLASSIFIED_TOOLS = new Set(["bash"]);
 
 export function requiresSafetyClassification(toolName: string): boolean {
   return CLASSIFIED_TOOLS.has(toolName);
@@ -33,9 +33,6 @@ export interface SafetyAuthorizationRequest {
   readonly toolCallId: string;
   readonly toolName: string;
   readonly input: unknown;
-  readonly classifierInput?: unknown;
-  readonly classifierCwd?: string;
-  readonly omitPriorActions?: boolean;
   readonly cwd: string;
   readonly signal?: AbortSignal;
 }
@@ -158,9 +155,8 @@ export class SafetyGate {
         branch: request.branch,
         toolCallId: request.toolCallId,
         toolName: request.toolName,
-        input: request.classifierInput ?? request.input,
-        cwd: request.classifierCwd ?? request.cwd,
-        omitPriorActions: request.omitPriorActions,
+        input: request.input,
+        cwd: request.cwd,
       });
     } catch (error) {
       return {

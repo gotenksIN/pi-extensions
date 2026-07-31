@@ -116,7 +116,7 @@ sudo dnf install bubblewrap
 sudo pacman -S bubblewrap
 ```
 
-The extension starts from a read-only host root and uses deterministic path policy, Bubblewrap mounts, user-approved session grants, and a two-stage classifier.
+The extension starts from a read-only host root and uses deterministic path and direct secret checks, Bubblewrap mounts, user-approved session grants, and a two-stage classifier for model-generated Bash.
 Bubblewrap is the primary security boundary.
 Read its [user guide](extensions/bwrap-sandbox/README.md) before you configure it.
 

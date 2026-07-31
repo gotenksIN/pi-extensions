@@ -15,9 +15,8 @@ import {
   type GrantScope,
 } from "./grants.ts";
 import {
-  buildDirectSecretAssessment,
-  isClassifierExemptMediaRead,
-  isSecretClassifiedTool,
+  buildDirectAccessAssessment,
+  isSecretCheckedTool,
 } from "./direct-secret-evidence.ts";
 import type { SandboxDisableSource } from "./process-state.ts";
 import { effectiveAccess, resolveExistingPath } from "./policy.ts";
@@ -210,7 +209,7 @@ class Session implements SandboxSession {
       ctx.ui.setStatus("sandbox", ctx.ui.theme.fg("accent", "bwrap sandbox active"));
       if (classifier.state === "unavailable") {
         ctx.ui.notify(
-          "Safety classification is unavailable. Model-generated Bash, non-media read, grep, write, and edit calls will require human review. Set classifier.pairs in the global sandbox configuration. Set the provider, model, and reasoning level for both stages.",
+          "Bash safety classification is unavailable. Model-generated Bash calls will require human review. Set classifier.pairs in the global sandbox configuration. Set the provider, model, and reasoning level for both stages.",
           "warning",
         );
       } else if (classifier.state === "disabled") {
@@ -266,32 +265,6 @@ class Session implements SandboxSession {
     };
   }
 
-  private async classifyDirectTool(
-    toolCallId: string,
-    toolName: string,
-    input: unknown,
-    resolvedPath: string,
-    ctx: ExtensionContext,
-  ): Promise<{ gate: SafetyGate; allowed: boolean; reason?: string }> {
-    const state = this.ready();
-    const gate = this.safetyGate;
-    if (!gate) throw new Error("Safety classification is unavailable");
-    if (!isSecretClassifiedTool(toolName)) return { gate, allowed: true };
-    const assessment = buildDirectSecretAssessment(toolName, input, resolvedPath, state.projectCwd);
-    const result = await gate.authorize({
-      branch: ctx.sessionManager.getBranch(),
-      toolCallId,
-      toolName,
-      input,
-      classifierInput: assessment.evidence,
-      classifierCwd: ":project",
-      omitPriorActions: true,
-      cwd: state.projectCwd,
-      signal: ctx.signal,
-    });
-    return { gate, ...result };
-  }
-
   authorizeDirectRead(
     toolCallId: string,
     toolName: string,
@@ -314,37 +287,30 @@ class Session implements SandboxSession {
     if (effectiveAccess(path, state.config.filesystem, state.grants.paths) === "none") {
       throw new Error(`Sandbox policy denies ${toolName} access to ${path}`);
     }
-    if (!isSecretClassifiedTool(toolName)) return;
-    if (isClassifierExemptMediaRead(toolName, path)) {
-      const gate = this.safetyGate;
-      if (!gate) throw new Error("Safety permit service is unavailable");
-      gate.approveOnce(toolCallId, toolName, input, state.projectCwd);
-      return;
-    }
-
-    const classified = await this.classifyDirectTool(toolCallId, toolName, input, path, ctx);
-    if (ctx.signal?.aborted) throw new Error("Direct tool safety classification was cancelled");
-    if (!classified.allowed) {
+    if (!isSecretCheckedTool(toolName)) return;
+    const gate = this.safetyGate;
+    if (!gate) throw new Error("Safety permit service is unavailable");
+    const assessment = buildDirectAccessAssessment(toolName, input, path, state.projectCwd);
+    if (assessment.reviewReasons.length > 0) {
       const choice = await this.approval.request(
         [
-          `The safety classifier requires human review for direct ${toolName} access.`,
+          `Direct ${toolName} access requires human review.`,
           `Requested path: ${rawPath}`,
           `Resolved path: ${path}`,
-          `Classifier result: ${classified.reason ?? "review required"}`,
+          "Safety triggers:",
+          ...assessment.reviewReasons.map((reason) => `- ${reason}`),
           "This approval applies to this exact call only.",
         ].join("\n"),
         ["No - block", `Yes - allow this ${toolName} (single-use)`],
       );
       if (choice !== `Yes - allow this ${toolName} (single-use)`) {
-        throw new Error(classified.reason ?? `Safety classification blocked the ${toolName} action`);
+        throw new Error(`Deterministic safety checks blocked the ${toolName} action`);
       }
       if (ctx.signal?.aborted) throw new Error("Direct tool review was cancelled");
       this.ready();
-      if (this.safetyGate !== classified.gate) throw new Error("Safety approval expired because the session changed");
-      classified.gate.approveOnce(toolCallId, toolName, input, state.projectCwd);
+      if (this.safetyGate !== gate) throw new Error("Safety approval expired because the session changed");
     }
-    this.ready();
-    if (this.safetyGate !== classified.gate) throw new Error("Safety approval expired because the session changed");
+    gate.approveOnce(toolCallId, toolName, input, state.projectCwd);
   }
 
   async authorizeDirectWrite(
@@ -356,13 +322,16 @@ class Session implements SandboxSession {
   ): Promise<void> {
     let state = this.ready();
     const admission = validateDirectWrite(rawPath, this.grantContext(state), state.grants);
-    const classified = isSecretClassifiedTool(toolName)
-      ? await this.classifyDirectTool(toolCallId, toolName, input, admission.path, ctx)
+    const gate = this.safetyGate;
+    if (!gate) throw new Error("Safety permit service is unavailable");
+    const assessment = isSecretCheckedTool(toolName)
+      ? buildDirectAccessAssessment(toolName, input, admission.path, state.projectCwd)
       : undefined;
-    if (ctx.signal?.aborted) throw new Error("Direct tool safety classification was cancelled");
-
-    const needsSafetyReview = classified !== undefined && !classified.allowed;
-    if (!needsSafetyReview && admission.alreadyWritable) return;
+    const needsSafetyReview = assessment !== undefined && assessment.reviewReasons.length > 0;
+    if (!needsSafetyReview && admission.alreadyWritable) {
+      if (assessment) gate.approveOnce(toolCallId, toolName, input, state.projectCwd);
+      return;
+    }
 
     const choices = admission.alreadyWritable
       ? ["No - block", "Yes - allow this write (single-use)"]
@@ -374,22 +343,22 @@ class Session implements SandboxSession {
           : `Direct tool ${toolName} requests write access.`,
         `Requested path: ${rawPath}`,
         `Resolved path: ${admission.path}`,
-        ...(needsSafetyReview ? [`Classifier result: ${classified.reason ?? "review required"}`] : []),
+        ...(assessment && assessment.reviewReasons.length > 0
+          ? ["Safety triggers:", ...assessment.reviewReasons.map((reason) => `- ${reason}`)]
+          : []),
       ].join("\n"),
       choices,
     );
     if (!choice || choice.startsWith("No")) {
       throw new Error(needsSafetyReview
-        ? classified.reason ?? `Safety classification blocked the ${toolName} action`
+        ? `Deterministic safety checks blocked the ${toolName} action`
         : `Sandbox denied ${toolName} access to ${admission.path}`);
     }
     if (ctx.signal?.aborted) throw new Error("Direct tool review was cancelled");
 
     state = this.ready();
-    if (classified && this.safetyGate !== classified.gate) {
-      throw new Error("Safety approval expired because the session changed");
-    }
-    if (needsSafetyReview) classified.gate.approveOnce(toolCallId, toolName, input, state.projectCwd);
+    if (this.safetyGate !== gate) throw new Error("Safety approval expired because the session changed");
+    if (assessment) gate.approveOnce(toolCallId, toolName, input, state.projectCwd);
 
     if (choice === "Yes - allow this write (single-use)") {
       validateDirectWrite(admission.path, this.grantContext(state), state.grants);

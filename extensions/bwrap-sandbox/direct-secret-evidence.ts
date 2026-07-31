@@ -1,14 +1,13 @@
 import { basename, extname, relative, sep } from "node:path";
-import { hasMediaSignature, readMediaHeader } from "./media-type.ts";
 import { inspectPathKind } from "./policy.ts";
 import type { PathKind } from "./types.ts";
 
-export type SecretClassifiedTool = "read" | "grep" | "write" | "edit";
+export type SecretCheckedTool = "read" | "grep" | "write" | "edit";
 
-export interface DirectSecretEvidence {
-  readonly domain: "direct-project-secret-access";
+export interface DirectAccessMetadata {
+  readonly evidenceType: "direct-file-access";
   readonly pathPolicyPassed: true;
-  readonly tool: SecretClassifiedTool;
+  readonly tool: SecretCheckedTool;
   readonly operation: "read" | "write";
   readonly target: {
     readonly scope: "project" | "outside-project";
@@ -28,11 +27,12 @@ export interface DirectSecretEvidence {
   };
 }
 
-export interface DirectSecretAssessment {
-  readonly evidence: DirectSecretEvidence;
+export interface DirectAccessAssessment {
+  readonly metadata: DirectAccessMetadata;
+  readonly reviewReasons: readonly string[];
 }
 
-const CLASSIFIED_TOOLS = new Set<SecretClassifiedTool>(["read", "grep", "write", "edit"]);
+const SECRET_CHECKED_TOOLS = new Set<SecretCheckedTool>(["read", "grep", "write", "edit"]);
 const TEMPLATE_SUFFIX = /(?:^|[._-])(example|sample|template|defaults?|dist)$/i;
 const SECRET_PATHS: readonly RegExp[] = [
   /(^|\/)\.env(?:\.[^/]+)?$/i,
@@ -69,19 +69,8 @@ function projectRelative(path: string, projectCwd: string): string | undefined {
   return value.split(sep).join("/");
 }
 
-export function isSecretClassifiedTool(toolName: string): toolName is SecretClassifiedTool {
-  return CLASSIFIED_TOOLS.has(toolName as SecretClassifiedTool);
-}
-
-export function isClassifierExemptMediaRead(
-  toolName: string,
-  path: string,
-  inspect: (candidate: string) => PathKind = inspectPathKind,
-  readHeader: (candidate: string) => Uint8Array | undefined = readMediaHeader,
-): boolean {
-  if (toolName !== "read" || inspect(path) !== "file") return false;
-  const header = readHeader(path);
-  return header !== undefined && hasMediaSignature(header);
+export function isSecretCheckedTool(toolName: string): toolName is SecretCheckedTool {
+  return SECRET_CHECKED_TOOLS.has(toolName as SecretCheckedTool);
 }
 
 export function isKnownSecretPath(path: string): boolean {
@@ -102,7 +91,7 @@ function numberField(input: unknown, name: string): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
-function payload(toolName: SecretClassifiedTool, input: unknown): string {
+function payload(toolName: SecretCheckedTool, input: unknown): string {
   if (toolName === "write") return stringField(input, "content") ?? "";
   if (toolName === "edit") {
     return [stringField(input, "oldText"), stringField(input, "newText")]
@@ -112,13 +101,13 @@ function payload(toolName: SecretClassifiedTool, input: unknown): string {
   return "";
 }
 
-export function buildDirectSecretAssessment(
-  toolName: SecretClassifiedTool,
+export function buildDirectAccessAssessment(
+  toolName: SecretCheckedTool,
   input: unknown,
   resolvedPath: string,
   projectCwd: string,
   inspect: (path: string) => PathKind = inspectPathKind,
-): DirectSecretAssessment {
+): DirectAccessAssessment {
   const relativePath = projectRelative(resolvedPath, projectCwd);
   const knownSecretPath = isKnownSecretPath(relativePath ?? resolvedPath);
   const text = payload(toolName, input);
@@ -143,8 +132,8 @@ export function buildDirectSecretAssessment(
       : {}),
     ...(toolName === "grep" ? { secretSeekingQuery } : {}),
   };
-  const evidence: DirectSecretEvidence = {
-    domain: "direct-project-secret-access",
+  const metadata: DirectAccessMetadata = {
+    evidenceType: "direct-file-access",
     pathPolicyPassed: true,
     tool: toolName,
     operation: toolName === "read" || toolName === "grep" ? "read" : "write",
@@ -158,5 +147,13 @@ export function buildDirectSecretAssessment(
     },
     request,
   };
-  return { evidence };
+  const reviewReasons = [
+    ...(knownSecretPath ? ["The target matches a known credential or secret path."] : []),
+    ...(secretSeekingQuery ? ["The grep pattern explicitly seeks credentials or secrets."] : []),
+    ...(potentialSecretPayload ? ["The write payload contains a potential credential or secret."] : []),
+    ...(toolName === "write" || toolName === "edit") && !payloadScanComplete
+      ? ["The write payload is too large for a complete local secret scan."]
+      : [],
+  ];
+  return { metadata, reviewReasons };
 }

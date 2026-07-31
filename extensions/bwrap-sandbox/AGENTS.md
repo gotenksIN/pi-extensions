@@ -49,13 +49,9 @@ For a model-generated Bash call, preserve this order:
 3. If automatic approval stops, ask the human about the exact call.
 4. Execute an approved call through the existing Bubblewrap runtime.
 
-For `read`, `grep`, `write`, and `edit`, apply deterministic path policy before the classifier.
-After policy allows a resolved regular media file, skip classifier inference for `read` and create the exact single-use execution permit locally.
-Detect media from a bounded local header and known binary signatures.
-Do not trust filename extensions.
-Do not send the header to a provider.
-SVG, unknown, ambiguous, and unreadable files must continue through classification.
-Do not apply this exception to directories, `grep`, writes, or edits.
+For `read`, `grep`, `write`, and `edit`, apply deterministic path policy before local secret checks.
+Require human review when a known secret path, secret-seeking grep pattern, potential secret payload, or incomplete payload scan applies.
+Allow a clean and complete local assessment without provider inference.
 Use only deterministic path policy for `find` and `ls`.
 For a direct write, ask for user approval when policy requires it.
 For `sandbox_access`, use deterministic grant validation and user approval.
@@ -89,8 +85,8 @@ Keep review for Git commands that change files, refs, hooks, remotes, or externa
 
 - `approval.ts` owns the shared parent and subagent approval broker.
 - `direct-gate.ts` identifies direct Pi filesystem tools. Keep it deterministic.
-- `media-type.ts` reads a bounded local header and detects known binary media signatures for the classifier exception.
-- `safety-policy.ts` owns prompts, risk categories, structured decision contracts, fixed limits, and semantic decision validation.
+- `direct-secret-evidence.ts` owns deterministic direct metadata, secret indicators, and review reasons.
+- `safety-policy.ts` owns Bash classifier prompts, risk categories, structured decision contracts, fixed limits, and semantic decision validation.
 - `safety-evidence.ts` alone reads the active branch and builds bounded evidence. It also owns canonical serialization and action digests.
 - `classifier-provider.ts` alone resolves Pi models and authentication and invokes one classifier stage through Pi's provider implementation.
 - `classifier.ts` owns pair availability, two-stage conjunction, and technical fallback.
@@ -257,30 +253,27 @@ Show only the validated semantic decision reason in the human review prompt.
 
 ## Tool-call and permit invariants
 
-Classify model-generated `bash`, `read`, `grep`, `write`, and `edit` tool calls.
-Use deterministic path policy before direct-tool classification.
+Classify only model-generated Bash tool calls with the two-stage model classifier.
+Use deterministic path policy and local secret checks for `read`, `grep`, `write`, and `edit`.
 Use only deterministic path policy for `find` and `ls`.
 Keep the existing user approval flow for direct writes and `sandbox_access`.
-Keep the media-read classifier exception after deterministic path policy and before provider inference.
 Preserve exact permit binding and consumption.
-Combine secret review and direct write approval in one prompt when both apply.
+Combine deterministic secret review and direct write approval in one prompt when both apply.
 For proactive Bash access, classify the exact future Bash input before the prompt, validate the grant independently, and bind one future ticket to the exact input, working directory, and lifecycle.
 A changed or reused future call must use normal classification.
 
-Direct-tool classifier evidence must never contain file content, grep patterns, edit text, write payloads, raw tool output, or absolute outside-project paths.
-Use project-relative path metadata, byte counts, and local boolean indicators.
-State that deterministic path policy passed.
-Never treat outside-project scope as a review reason without concrete secret or security-sensitive evidence.
-Do not infer a credential path from an omitted absolute path when the local `knownSecretPath` result is false.
-Omit prior action payloads from direct-tool evidence.
+Direct-tool assessment must stay local and deterministic.
+Use project-relative path metadata, byte counts, scan completeness, and local boolean indicators.
+Never send direct-tool metadata, file content, grep patterns, edit text, write payloads, or raw tool output to a provider.
+Never treat outside-project scope as a review reason without a concrete local indicator.
 Use a local exact-input digest only for permit integrity.
-Never send that digest as a substitute for secret semantics.
 Document that path-only detection cannot find all secrets in ordinary files.
 
 Pi tool-call input is mutable.
-For extension-owned `bash`, `read`, `grep`, `write`, and `edit`, create a single-use permit after two classifier allows or one explicit human review approval.
+For extension-owned Bash, create a single-use permit after two classifier allows or one explicit human review approval.
+For extension-owned `read`, `grep`, `write`, and `edit`, create a single-use permit after a clean deterministic assessment or one explicit human review approval.
 The permit must cover tool call ID, tool name, canonical final input, working directory, and lifecycle generation.
-Wrap each classified built-in tool and consume the permit immediately before execution.
+Wrap each protected built-in tool and consume the permit immediately before execution.
 Reject a missing, changed, expired, or reused permit.
 Clear all permits on session start and shutdown.
 
@@ -329,9 +322,10 @@ Classifier tests must cover:
 - Evidence trust boundaries and byte limits.
 - Stable digests and unsupported values.
 - `find` and `ls` bypassing classifier invocation.
-- Direct secret evidence omitting content, queries, edit text, and payloads.
-- Deterministic direct-path denial before classifier invocation.
-- Classified read, grep, write, and edit automatic allows and human review.
+- Direct metadata omitting content, queries, edit text, and payloads.
+- Deterministic direct-path denial before secret assessment.
+- Deterministic read, grep, write, and edit automatic allows and human review.
+- Direct tools making no classifier provider calls.
 - Combined direct write and secret review without duplicate prompts.
 - Exact and parent grant scope selection.
 - Missing targets with existing parents.
@@ -376,7 +370,7 @@ Do not add:
 - Provider-specific HTTP request construction.
 - Raw evidence or provider-response logging.
 - Repository-file ingestion into classifier evidence.
-- Raw direct read, grep, write, or edit content in classifier evidence.
+- Provider inference for structured direct file operations.
 - Duplicated protected-path or capability checks.
 - Writable parent overlays.
 - Automatic widening from exact grant scope to parent scope.
