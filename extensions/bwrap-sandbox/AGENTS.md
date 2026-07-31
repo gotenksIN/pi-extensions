@@ -69,7 +69,11 @@ Do not make the classifier review `git status`, `git diff`, `git diff --check`, 
 Treat read-only `gh search code`, `gh search commits`, `gh search issues`, `gh search prs`, and `gh search repos` as routine when the complete action has no other risk.
 Keep review for a search query that transmits credentials, project secrets, or proprietary source code to GitHub.
 Classify the exact current command.
-Keep review for Git commands that change files, refs, hooks, remotes, or external services.
+Treat standalone `git fetch origin` as routine.
+Treat standalone `git pull --ff-only` as routine when it uses the configured upstream or literal `origin` remote.
+Keep review for explicit URLs, other remotes, custom refspecs, Git configuration overrides, custom transports, recursive submodule updates, non-fast-forward merges, rebases, and chained commands.
+Do not infer execution of a local hook or filter without concrete evidence from the proposed action or a completed action on which it depends.
+Keep review for other Git commands that change files, refs, hooks, remotes, or external services.
 
 ## Ownership and dependency direction
 
@@ -335,6 +339,8 @@ Classifier tests must cover:
 - Missing targets with existing parents.
 - Parent scope under `none` and protected runtime paths.
 - Bash permit integrity and classifier ordering.
+- Narrow automatic approval for origin fetches and fast-forward pulls.
+- Review boundaries for remote, refspec, configuration, transport, submodule, merge, rebase, and chained variants.
 - Permit consumption, mutation, reuse, and lifecycle invalidation.
 - Unavailable startup warning and human review behavior.
 - Single-use human review permits and human denial.

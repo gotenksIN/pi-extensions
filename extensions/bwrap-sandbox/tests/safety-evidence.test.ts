@@ -95,6 +95,15 @@ test("classifier policy separates completed actions from the proposed action", (
   assert.ok(CLASSIFIER_POLICY.includes("must not be attributed to the proposed action"));
 });
 
+test("classifier policy allows narrow origin fetch and fast-forward pull", () => {
+  assert.ok(CLASSIFIER_POLICY.includes("Allow a standalone 'git fetch origin'"));
+  assert.ok(CLASSIFIER_POLICY.includes("Allow a standalone 'git pull --ff-only'"));
+  assert.ok(CLASSIFIER_POLICY.includes("remote other than 'origin'"));
+  assert.ok(CLASSIFIER_POLICY.includes("custom refspec"));
+  assert.ok(CLASSIFIER_POLICY.includes("recursive submodule updates"));
+  assert.ok(CLASSIFIER_POLICY.includes("another chained command"));
+});
+
 test("classifier policy does not include obsolete direct-tool metadata rules", () => {
   assert.ok(!CLASSIFIER_POLICY.includes("knownSecretPath"));
   assert.ok(!CLASSIFIER_POLICY.includes("payloadScanComplete"));

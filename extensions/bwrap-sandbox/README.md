@@ -291,7 +291,13 @@ Commands such as `git status`, `git diff`, `git diff --check`, `git diff --stat`
 Read-only `gh search code`, `gh search commits`, `gh search issues`, `gh search prs`, and `gh search repos` commands are also routine when the complete action has no other risk.
 A search query that contains credentials, project secrets, or proprietary source code still requires review because it transmits that data to GitHub.
 The classifier assesses the exact current action.
-Git commands that change files, refs, hooks, remotes, or external services remain subject to the normal review rules.
+A standalone `git fetch origin` is routine.
+A standalone `git pull --ff-only` is routine when it uses the configured upstream or the literal `origin` remote.
+These operations can update local refs and the worktree without requiring review for that effect alone.
+Review remains required for explicit URLs, other remotes, custom refspecs, Git configuration overrides, custom transports, recursive submodule updates, non-fast-forward merges, rebases, and chained commands.
+An ordinary pull does not receive remote hooks or filter commands by itself.
+The classifier reviews concrete evidence that the proposed action will execute an existing local hook or filter.
+Other Git commands that change files, refs, hooks, remotes, or external services remain subject to the normal review rules.
 
 Direct content-access calls do not use the classifier.
 Deterministic path and secret checks can block them without a provider request.
