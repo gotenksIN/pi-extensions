@@ -100,6 +100,75 @@ test("safety gate creates and consumes one single-use execution permit", async (
   assert.throws(() => gate.consumePermit("call-1", "bash", { command: "ls" }, "/work"), /missing/);
 });
 
+test("proactive classification can approve one exact future Bash call", async () => {
+  const gate = new SafetyGate(config(), registry());
+  await gate.start();
+  const input = { command: "git commit -m test" };
+  assert.equal((await gate.classify(request(input))).allowed, true);
+  assert.throws(() => gate.consumePermit("call-1", "bash", input, "/work"), /missing/);
+
+  gate.approveExactBashRetry(input, "/work");
+  assert.equal(gate.authorizeBashRetry("future", input, "/work"), true);
+  gate.consumePermit("future", "bash", input, "/work");
+  assert.equal(gate.authorizeBashRetry("reused", input, "/work"), false);
+});
+
+test("proactive Bash approval rejects changed future input", async () => {
+  const gate = new SafetyGate(config(), registry());
+  await gate.start();
+  gate.approveExactBashRetry({ command: "git commit -m test" }, "/work");
+  assert.equal(gate.authorizeBashRetry("changed", { command: "git push" }, "/work"), false);
+  assert.throws(() => gate.consumePermit("changed", "bash", { command: "git push" }, "/work"), /missing/);
+});
+
+test("failed Bash permits can become one exact retry permit", async () => {
+  const gate = new SafetyGate(config(), registry());
+  await gate.start();
+  const input = { command: "git commit -m test" };
+  assert.equal((await gate.authorize(request(input))).allowed, true);
+  gate.consumePermit("call-1", "bash", input, "/work");
+  gate.recordBashResult(input, "/work", 128);
+
+  const pending = gate.getPendingBashRetry();
+  assert.ok(pending);
+  assert.equal(pending!.command, input.command);
+  assert.equal(gate.approvePendingBashRetry(pending!.digest), true);
+  assert.equal(gate.authorizeBashRetry("call-2", input, "/work"), true);
+  gate.consumePermit("call-2", "bash", input, "/work");
+  assert.equal(gate.authorizeBashRetry("call-3", input, "/work"), false);
+});
+
+test("Bash retry approval rejects changed input and lifecycle state", async () => {
+  const changed = new SafetyGate(config(), registry());
+  await changed.start();
+  const input = { command: "git commit -m test" };
+  changed.recordBashResult(input, "/work", 1);
+  const pending = changed.getPendingBashRetry()!;
+  assert.equal(changed.approvePendingBashRetry(pending.digest), true);
+  assert.equal(changed.authorizeBashRetry("changed", { command: "git push" }, "/work"), false);
+  assert.throws(() => changed.consumePermit("changed", "bash", { command: "git push" }, "/work"), /missing/);
+
+  changed.recordBashResult(input, "/work", 1);
+  const stale = changed.getPendingBashRetry()!;
+  changed.stop();
+  assert.equal(changed.approvePendingBashRetry(stale.digest), false);
+  assert.equal(changed.getPendingBashRetry(), undefined);
+});
+
+test("successful, cancelled, and discarded Bash retries do not persist", async () => {
+  const gate = new SafetyGate(config(), registry());
+  await gate.start();
+  const input = { command: "git status" };
+  gate.recordBashResult(input, "/work", 0);
+  assert.equal(gate.getPendingBashRetry(), undefined);
+  gate.recordBashResult(input, "/work", null);
+  assert.equal(gate.getPendingBashRetry(), undefined);
+  gate.recordBashResult(input, "/work", 1);
+  const pending = gate.getPendingBashRetry()!;
+  gate.discardPendingBashRetry(pending.digest);
+  assert.equal(gate.getPendingBashRetry(), undefined);
+});
+
 test("safety permit rejects changed arguments and expires on lifecycle change", async () => {
   const changed = new SafetyGate(config(), registry());
   await changed.start();

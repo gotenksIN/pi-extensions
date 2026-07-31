@@ -78,6 +78,13 @@ export interface SessionStatusSnapshot {
 export interface PersistentGrantResult {
   readonly path: string;
   readonly granted: boolean;
+  readonly bashApproved: boolean;
+}
+
+export interface ProactiveBashAccess {
+  readonly toolCallId: string;
+  readonly input: unknown;
+  readonly ctx: ExtensionContext;
 }
 
 export interface ManualTestExecution {
@@ -109,7 +116,12 @@ export interface SandboxSession {
   ): Promise<void>;
   authorizeBash(toolCallId: string, input: unknown, ctx: ExtensionContext): Promise<void>;
   consumeSafetyPermit(toolCallId: string, toolName: string, input: unknown): void;
-  requestPersistentWrite(rawPath: string, scope: GrantScope): Promise<PersistentGrantResult>;
+  recordBashResult(input: unknown, exitCode: number | null): void;
+  requestPersistentWrite(
+    rawPath: string,
+    scope: GrantScope,
+    proactiveBash?: ProactiveBashAccess,
+  ): Promise<PersistentGrantResult>;
   status(): SessionStatusSnapshot;
   manualTestExecution(): ManualTestExecution;
 }
@@ -393,6 +405,7 @@ class Session implements SandboxSession {
     const state = this.ready();
     const gate = this.safetyGate;
     if (!gate) throw new Error("Safety classification is unavailable");
+    if (gate.authorizeBashRetry(toolCallId, input, state.projectCwd)) return;
     const result = await gate.authorize({
       branch: ctx.sessionManager.getBranch(),
       toolCallId,
@@ -432,28 +445,84 @@ class Session implements SandboxSession {
     gate.consumePermit(toolCallId, toolName, input, this.projectCwd());
   }
 
-  async requestPersistentWrite(rawPath: string, scope: GrantScope): Promise<PersistentGrantResult> {
-    let state = this.ready();
-    const admission = validatePersistentGrantRequest(rawPath, scope, this.grantContext(state), state.grants);
-    if (admission.alreadyWritable) return { path: admission.path, granted: false };
+  recordBashResult(input: unknown, exitCode: number | null): void {
+    const state = this.ready();
+    const gate = this.safetyGate;
+    if (!gate) throw new Error("Safety classification is unavailable");
+    gate.recordBashResult(input, state.projectCwd, exitCode);
+  }
 
+  async requestPersistentWrite(
+    rawPath: string,
+    scope: GrantScope,
+    proactiveBash?: ProactiveBashAccess,
+  ): Promise<PersistentGrantResult> {
+    let state = this.ready();
+    const gate = this.safetyGate;
+    if (!gate) throw new Error("Safety classification is unavailable");
+    const admission = validatePersistentGrantRequest(rawPath, scope, this.grantContext(state), state.grants);
+    if (admission.alreadyWritable) return { path: admission.path, granted: false, bashApproved: false };
+
+    const retry = proactiveBash ? undefined : gate.getPendingBashRetry();
+    const proactiveResult = proactiveBash
+      ? await gate.classify({
+        branch: proactiveBash.ctx.sessionManager.getBranch(),
+        toolCallId: proactiveBash.toolCallId,
+        toolName: "bash",
+        input: proactiveBash.input,
+        cwd: state.projectCwd,
+        signal: proactiveBash.ctx.signal,
+      })
+      : undefined;
+    if (proactiveBash?.ctx.signal?.aborted) throw new Error("Proactive Bash classification was cancelled");
+    this.ready();
+    if (this.safetyGate !== gate) throw new Error("Sandbox approval expired because the session changed");
+
+    const proactiveData = proactiveBash?.input && typeof proactiveBash.input === "object"
+      ? proactiveBash.input as Record<string, unknown>
+      : {};
+    const proactiveCommand = typeof proactiveData.command === "string" ? proactiveData.command : undefined;
+    const hasExactBash = proactiveCommand !== undefined || retry !== undefined;
+    const grantOnly = "Yes - grant write access only";
+    const grantAndRetry = "Yes - grant access and allow one exact Bash call";
     const choice = await this.approval.request(
       [
-        "The model requests write access for this session.",
+        proactiveResult && !proactiveResult.allowed
+          ? "The exact Bash call requires safety review and write access."
+          : "The model requests write access for this session.",
         `Requested path: ${rawPath}`,
         `Grant scope: ${scope}`,
         `Resolved grant path: ${admission.path}`,
         "This grant will apply to later Bash calls and direct Pi filesystem tools.",
+        ...(proactiveCommand ? ["", `Exact Bash command: ${proactiveCommand}`] : []),
+        ...(proactiveResult && !proactiveResult.allowed
+          ? [`Classifier result: ${proactiveResult.reason ?? "review required"}`]
+          : []),
+        ...(retry ? ["", "The last approved Bash call failed.", `Exact retry command: ${retry.command}`] : []),
       ].join("\n"),
-      ["No - block", "Yes - grant write access for this session"],
+      hasExactBash
+        ? ["No - block", grantOnly, grantAndRetry]
+        : ["No - block", "Yes - grant write access for this session"],
     );
-    if (!choice || choice.startsWith("No")) throw new Error(`Sandbox access denied for ${admission.path}`);
+    if (!choice || choice.startsWith("No")) {
+      if (retry) gate.discardPendingBashRetry(retry.digest);
+      throw new Error(`Sandbox access denied for ${admission.path}`);
+    }
 
     state = this.ready();
+    if (this.safetyGate !== gate) throw new Error("Sandbox approval expired because the session changed");
     const next = addApprovedGrant(state.grants, admission.path, this.grantContext(state));
+    const bashApproved = choice === grantAndRetry;
+    if (bashApproved) {
+      if (proactiveBash) gate.approveExactBashRetry(proactiveBash.input, state.projectCwd);
+      else if (!retry || !gate.approvePendingBashRetry(retry.digest)) {
+        throw new Error("The exact Bash retry approval expired before the grant was applied");
+      }
+    }
+    if (!bashApproved && retry) gate.discardPendingBashRetry(retry.digest);
     this.current = { ...state, grants: next };
     this.approval.notify(`Sandbox granted write access for this session: ${admission.path}`);
-    return { path: admission.path, granted: true };
+    return { path: admission.path, granted: true, bashApproved };
   }
 
   status(): SessionStatusSnapshot {

@@ -68,9 +68,18 @@ export default function sandboxExtension(pi: ExtensionAPI) {
     async execute(id, params, signal, onUpdate) {
       const cwd = session.projectCwd();
       if (session.state() === "ready") session.consumeSafetyPermit(id, "bash", params);
+      const baseOperations = session.state() === "ready" ? session.operations() : undefined;
       const bash = session.state() === "disabled"
         ? createBashTool(cwd)
-        : createBashTool(cwd, { operations: session.operations() });
+        : createBashTool(cwd, {
+          operations: {
+            async exec(command, execCwd, options) {
+              const result = await baseOperations!.exec(command, execCwd, options);
+              if (session.state() === "ready") session.recordBashResult(params, result.exitCode);
+              return result;
+            },
+          },
+        });
       return bash.execute(id, params, signal, onUpdate);
     },
   });
@@ -79,9 +88,10 @@ export default function sandboxExtension(pi: ExtensionAPI) {
     name: "sandbox_access",
     label: "Sandbox Write Access",
     description:
-      "Request a human-approved exact-path or parent-directory write grant for this session, then retry a Bubblewrap-blocked command. Use parent scope for create, delete, rename, and move operations. Policy none entries can never be granted.",
-    promptSnippet: "Request a human-approved session write grant before retrying a blocked sandbox operation",
+      "Request a human-approved exact-path or parent-directory write grant before a known write or after Bubblewrap blocks one. Include bash to classify and approve one exact future Bash call in the same prompt. A grant after a failed approved Bash call can also authorize one exact retry. Use parent scope for create, delete, rename, and move operations. Policy none entries can never be granted.",
+    promptSnippet: "Request a human-approved session write grant before a known write or after a blocked sandbox operation",
     promptGuidelines: [
+      "Request access before an operation when its required write path and scope are already known. Include the exact Bash input when the grant is for one known Bash call.",
       "Use exact scope for content changes to an existing path.",
       "Use parent scope for operations that create, delete, rename, or move a directory entry. Do not grant the exact file first because an exact bind mount cannot be deleted or renamed during that session.",
       "Do not infer authorization from shell command text. Request only the narrow path and scope that the operation requires.",
@@ -92,16 +102,28 @@ export default function sandboxExtension(pi: ExtensionAPI) {
         Type.Literal("exact"),
         Type.Literal("parent"),
       ], { description: "Grant the exact path, or grant its parent directory for directory-entry changes. Default: exact." })),
+      bash: Type.Optional(Type.Object({
+        command: Type.String({ description: "Exact Bash command that will use this grant." }),
+        timeout: Type.Optional(Type.Number({ description: "Exact Bash timeout in seconds, when the later Bash call uses one." })),
+      }, { description: "Classify and approve one exact future Bash call together with this grant." })),
     }),
-    async execute(_id, params) {
+    async execute(id, params, _signal, _onUpdate, ctx) {
       const scope = params.scope ?? "exact";
-      const result = await session.requestPersistentWrite(params.path, scope);
+      const result = await session.requestPersistentWrite(
+        params.path,
+        scope,
+        params.bash ? { toolCallId: id, input: params.bash, ctx } : undefined,
+      );
       const text = result.granted
-        ? `Granted write access for this session: ${result.path}. Retry the command.`
+        ? result.bashApproved
+          ? params.bash
+            ? `Granted write access for this session: ${result.path}. Run the exact Bash command once without another classifier review.`
+            : `Granted write access for this session: ${result.path}. Retry the exact failed Bash command once without another classifier review.`
+          : `Granted write access for this session: ${result.path}. Retry the command.`
         : `${result.path} is already writable.`;
       return {
         content: [{ type: "text", text }],
-        details: { path: result.path, scope, granted: result.granted },
+        details: { path: result.path, scope, granted: result.granted, bashApproved: result.bashApproved },
       };
     },
   });

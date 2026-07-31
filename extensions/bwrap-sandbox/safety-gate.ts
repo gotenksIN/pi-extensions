@@ -16,6 +16,18 @@ interface ExecutionPermit {
   readonly generation: number;
 }
 
+interface BashRetryRecord {
+  readonly cwd: string;
+  readonly digest: string;
+  readonly command: string;
+  readonly generation: number;
+}
+
+export interface PendingBashRetry {
+  readonly digest: string;
+  readonly command: string;
+}
+
 export interface SafetyAuthorizationRequest {
   readonly branch: readonly unknown[];
   readonly toolCallId: string;
@@ -36,6 +48,8 @@ export interface SafetyAuthorizationResult {
 export class SafetyGate {
   private readonly classifier: SafetyClassifier;
   private readonly permits = new Map<string, ExecutionPermit>();
+  private pendingBashRetry: BashRetryRecord | undefined;
+  private approvedBashRetry: BashRetryRecord | undefined;
   private generation = 0;
 
   constructor(config: ClassifierConfig, registry: ClassifierModelRegistry) {
@@ -45,12 +59,16 @@ export class SafetyGate {
   async start(): Promise<ClassifierStatus> {
     this.generation += 1;
     this.permits.clear();
+    this.pendingBashRetry = undefined;
+    this.approvedBashRetry = undefined;
     return this.classifier.inspectAvailability();
   }
 
   stop(): void {
     this.generation += 1;
     this.permits.clear();
+    this.pendingBashRetry = undefined;
+    this.approvedBashRetry = undefined;
   }
 
   status(): ClassifierStatus {
@@ -67,14 +85,71 @@ export class SafetyGate {
     });
   }
 
-  async authorize(request: SafetyAuthorizationRequest): Promise<SafetyAuthorizationResult> {
-    if (!requiresSafetyClassification(request.toolName)) return { allowed: true };
-    if (!this.classifier.status().enabled) {
-      try {
-        this.addPermit(request.toolCallId, request.toolName, request.input, request.cwd);
-      } catch {
-        return { allowed: false, reason: "The final tool input cannot be serialized safely" };
-      }
+  authorizeBashRetry(toolCallId: string, input: unknown, cwd: string): boolean {
+    const retry = this.approvedBashRetry;
+    this.approvedBashRetry = undefined;
+    if (!retry) return false;
+    let digest: string;
+    try {
+      digest = actionDigest({ tool: "bash", input, cwd });
+    } catch {
+      return false;
+    }
+    if (retry.generation !== this.generation || retry.cwd !== cwd || retry.digest !== digest) return false;
+    this.addPermit(toolCallId, "bash", input, cwd);
+    return true;
+  }
+
+  recordBashResult(input: unknown, cwd: string, exitCode: number | null): void {
+    this.pendingBashRetry = undefined;
+    if (exitCode === 0 || exitCode === null) return;
+    const data = input && typeof input === "object" ? input as Record<string, unknown> : {};
+    if (typeof data.command !== "string" || Buffer.byteLength(data.command, "utf8") > 32 * 1024) return;
+    try {
+      this.pendingBashRetry = {
+        cwd,
+        digest: actionDigest({ tool: "bash", input, cwd }),
+        command: data.command,
+        generation: this.generation,
+      };
+    } catch {
+      // Inputs that cannot bind an execution permit cannot create retry state.
+    }
+  }
+
+  getPendingBashRetry(): PendingBashRetry | undefined {
+    const retry = this.pendingBashRetry;
+    if (!retry || retry.generation !== this.generation) return undefined;
+    return { digest: retry.digest, command: retry.command };
+  }
+
+  approvePendingBashRetry(digest: string): boolean {
+    const retry = this.pendingBashRetry;
+    this.pendingBashRetry = undefined;
+    if (!retry || retry.generation !== this.generation || retry.digest !== digest) return false;
+    this.approvedBashRetry = retry;
+    return true;
+  }
+
+  approveExactBashRetry(input: unknown, cwd: string): void {
+    const data = input && typeof input === "object" ? input as Record<string, unknown> : {};
+    if (typeof data.command !== "string" || Buffer.byteLength(data.command, "utf8") > 32 * 1024) {
+      throw new Error("The proactive Bash input is too large for an exact retry approval");
+    }
+    this.approvedBashRetry = {
+      cwd,
+      digest: actionDigest({ tool: "bash", input, cwd }),
+      command: data.command,
+      generation: this.generation,
+    };
+  }
+
+  discardPendingBashRetry(digest: string): void {
+    if (this.pendingBashRetry?.digest === digest) this.pendingBashRetry = undefined;
+  }
+
+  async classify(request: SafetyAuthorizationRequest): Promise<SafetyAuthorizationResult> {
+    if (!requiresSafetyClassification(request.toolName) || !this.classifier.status().enabled) {
       return { allowed: true };
     }
     let built: ReturnType<typeof buildSafetyEvidence>;
@@ -93,7 +168,12 @@ export class SafetyGate {
         reason: error instanceof Error ? error.message : "Safety evidence is invalid",
       };
     }
-    const result = await this.classifier.evaluate(built.serialized, request.signal);
+    return this.classifier.evaluate(built.serialized, request.signal);
+  }
+
+  async authorize(request: SafetyAuthorizationRequest): Promise<SafetyAuthorizationResult> {
+    if (!requiresSafetyClassification(request.toolName)) return { allowed: true };
+    const result = await this.classify(request);
     if (!result.allowed) return result;
     try {
       this.addPermit(request.toolCallId, request.toolName, request.input, request.cwd);

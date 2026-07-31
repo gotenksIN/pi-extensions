@@ -59,6 +59,8 @@ Do not apply this exception to directories, `grep`, writes, or edits.
 Use only deterministic path policy for `find` and `ls`.
 For a direct write, ask for user approval when policy requires it.
 For `sandbox_access`, use deterministic grant validation and user approval.
+When the required path and scope are known before one Bash call, permit a proactive request that classifies the exact Bash input and combines its review with the grant prompt.
+The classifier must not select, create, or widen the grant.
 A user approval does not skip Bubblewrap.
 
 Trusted `user_bash` and `/sandbox-test` bypass classifier calls.
@@ -128,6 +130,8 @@ Only `grants.ts` can create `ApprovedWriteGrants`.
 A grant stays subordinate to `none` and protected runtime paths.
 A direct write can use single-use approval without creating a session grant.
 A persistent grant requires explicit user approval.
+A combined proactive approval can create one validated persistent grant and one exact future Bash ticket.
+Keep the grant and ticket as separate authorization records with independent validation.
 
 `sandbox_access` defaults to `exact` scope.
 Use exact scope only for content changes to an existing path.
@@ -260,6 +264,8 @@ Keep the existing user approval flow for direct writes and `sandbox_access`.
 Keep the media-read classifier exception after deterministic path policy and before provider inference.
 Preserve exact permit binding and consumption.
 Combine secret review and direct write approval in one prompt when both apply.
+For proactive Bash access, classify the exact future Bash input before the prompt, validate the grant independently, and bind one future ticket to the exact input, working directory, and lifecycle.
+A changed or reused future call must use normal classification.
 
 Direct-tool classifier evidence must never contain file content, grep patterns, edit text, write payloads, raw tool output, or absolute outside-project paths.
 Use project-relative path metadata, byte counts, and local boolean indicators.
@@ -283,7 +289,9 @@ Parse configuration strictly.
 Reject unknown fields and invalid types.
 Compile all filesystem paths before runtime use.
 Project configuration can modify only permitted project-scoped settings.
-Reject project `sshAgent` and `classifier` fields even for trusted projects.
+Reject project `sshAgent`, `sandboxDirectory`, and `classifier` fields even for trusted projects.
+The global `sandboxDirectory` defaults to `~/sandbox` and adds one optional writable directory when it exists.
+Omit this generated rule when the directory is missing, but keep explicit writable filesystem rules strict.
 
 An omitted classifier pair list uses defaults.
 An explicit list replaces defaults.

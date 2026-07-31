@@ -67,16 +67,22 @@ A model-generated Bash call passes through these controls:
 2. Classifier Stage 2 must return a valid `allow` decision.
 3. If automatic approval stops, the human can create a single-use approval for the exact call.
 4. Bubblewrap builds the mount plan and starts the Bash process.
+5. If the approved call fails, a later write-grant prompt can also authorize one retry of that exact Bash action.
 
 Direct `read`, `grep`, `write`, and `edit` calls use deterministic path policy first.
 They then use privacy-safe project-secret classification.
 Direct `find` and `ls` calls use only deterministic path policy.
 A direct write also uses the existing write approval flow when required.
 A `sandbox_access` request uses deterministic grant validation and user approval.
+The model can request a grant before an operation when it already knows the required path and scope.
+For one known Bash action, it can include the exact `bash` input so classification and the filesystem grant use one combined human prompt.
+The classifier does not select or create the grant.
 
 Each control is independent.
 Automatic execution of a classified call requires two classifier `allow` decisions.
 A human review approval is single-use and applies to one exact tool call.
+A failed approved Bash call can become a pending retry only after a later grant prompt displays the exact command and the human selects the combined grant-and-retry choice.
+The retry uses a new single-use execution permit and cannot survive a changed command, working directory, lifecycle, or intervening Bash authorization.
 A classifier decision or human review approval cannot create a mount, grant, or runtime capability.
 It cannot bypass a Bubblewrap error.
 A user grant cannot override `none` or a protected runtime path.
@@ -151,6 +157,20 @@ Example for create, delete, rename, or move:
   "scope": "parent"
 }
 ```
+
+Example for one known Bash action that needs a grant:
+
+```json
+{
+  "path": "/work/.git",
+  "scope": "exact",
+  "bash": {
+    "command": "git add src/file.ts && git commit -m 'Update file'"
+  }
+}
+```
+
+The later Bash call must use the same complete input, including `timeout` when specified.
 
 ## Mount order
 
@@ -245,6 +265,10 @@ An ordinary directory `grep` is not automatically treated as sensitive.
 A direct write outside current write policy uses the shared approval channel.
 If safety review and write approval are both required, the extension uses one combined prompt.
 The user can allow one operation or add a session grant.
+A proactive `sandbox_access` call can include one exact future Bash input.
+The extension classifies that input before the grant prompt, and the human can grant the resolved path and authorize that exact Bash call with one choice.
+After a failed approved Bash call, the shared grant prompt can offer the same type of combined choice for one exact retry without another classifier request.
+The user can instead grant only the path.
 A subagent cannot approve its own request.
 A subagent request must use an interactive parent approval owner.
 Requests fail closed when no owner is available.
@@ -400,6 +424,10 @@ For extension-owned `bash`, `read`, `grep`, `write`, and `edit`, the extension c
 The extension wraps these built-in tools so approval and execution have the same integrity check.
 The permit covers the tool call ID, tool name, final input, working directory, and lifecycle generation.
 The tool consumes the permit immediately before execution.
+A proactive write-grant request can classify one exact future Bash input without creating an execution permit or filesystem grant.
+A combined human approval creates the validated grant and one exact future-call ticket.
+A failed Bash execution can also stage bounded retry metadata for the next write-grant request.
+A combined human grant-and-retry choice converts that metadata into one permit for a new tool call only when the command and working directory still match exactly.
 A missing, changed, expired, or reused permit fails closed.
 
 ## Configuration
