@@ -17,12 +17,23 @@ test("secret path rules identify credentials and exempt explicit templates", () 
   for (const path of [
     "/work/.env",
     "/work/.env.production.local",
+    "/work/.envrc",
     "/work/id_ed25519",
+    "/work/deploy-private.pem",
     "/work/.npmrc",
+    "/work/.git-credentials",
+    "/work/.cargo/credentials.toml",
+    "/work/.config/gh/hosts.yml",
+    "/work/.config/rclone/rclone.conf",
     "/work/.aws/credentials",
+    "/work/.kube/config",
+    "/work/prod.kubeconfig",
+    "/work/.azure/accessTokens.json",
+    "/work/.config/gcloud/credentials.db",
     "/work/terraform.tfstate",
     "/work/prod.auto.tfvars.json",
     "/work/deploy-secret.yaml",
+    "/work/secrets.toml",
   ]) assert.equal(isKnownSecretPath(path), true);
   for (const path of [
     "/work/.env.example",
@@ -48,14 +59,16 @@ test("direct safety checks return precise review reasons", () => {
   const secretRead = buildDirectAccessAssessment("read", { path: "/work/.env" }, "/work/.env", "/work", file);
   assert.deepEqual(secretRead.reviewReasons, ["The target matches a known credential or secret path."]);
 
-  const grep = buildDirectAccessAssessment(
-    "grep",
-    { path: "/work", pattern: "password" },
-    "/work",
-    "/work",
-    directory,
-  );
-  assert.deepEqual(grep.reviewReasons, ["The grep pattern explicitly seeks credentials or secrets."]);
+  for (const pattern of ["password", "credentials", "API keys", "private keys"]) {
+    const grep = buildDirectAccessAssessment(
+      "grep",
+      { path: "/work", pattern },
+      "/work",
+      "/work",
+      directory,
+    );
+    assert.deepEqual(grep.reviewReasons, ["The grep pattern explicitly seeks credentials or secrets."]);
+  }
 
   const write = buildDirectAccessAssessment(
     "write",
@@ -94,16 +107,18 @@ test("direct metadata omits read queries and write or edit content", () => {
   assert.equal(write.metadata.request.payloadScanComplete, true);
   assert.equal(write.metadata.request.potentialSecretPayload, true);
 
-  const oldText = "PRIVATE=old-value";
-  const newText = "PRIVATE=new-value";
+  const oldText = "token = placeholder";
+  const newText = "token = ghp_abcdefghijklmnopqrstuvwxyz123456";
   const edit = buildDirectAccessAssessment(
     "edit",
-    { path: "/work/src/a.ts", oldText, newText },
+    { path: "/work/src/a.ts", edits: [{ oldText, newText }] },
     "/work/src/a.ts",
     "/work",
     file,
   );
   const editJson = JSON.stringify(edit.metadata);
+  assert.equal(edit.metadata.request.potentialSecretPayload, true);
+  assert.deepEqual(edit.reviewReasons, ["The write payload contains a potential credential or secret."]);
   assert.ok(!editJson.includes(oldText));
   assert.ok(!editJson.includes(newText));
 });

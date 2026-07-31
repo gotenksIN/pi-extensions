@@ -51,6 +51,8 @@ For a model-generated Bash call, preserve this order:
 
 For `read`, `grep`, `write`, and `edit`, apply deterministic path policy before local secret checks.
 Require human review when a known secret path, secret-seeking grep pattern, potential secret payload, or incomplete payload scan applies.
+Keep secret-path rules limited to high-confidence credential stores and secret-specific filenames.
+Scan every structured edit replacement and the legacy single-replacement shape.
 Allow a clean and complete local assessment without provider inference.
 Use only deterministic path policy for `find` and `ls`.
 For a direct write, ask for user approval when policy requires it.
@@ -323,6 +325,8 @@ Classifier tests must cover:
 - Stable digests and unsupported values.
 - `find` and `ls` bypassing classifier invocation.
 - Direct metadata omitting content, queries, edit text, and payloads.
+- Common high-confidence credential paths and explicit template exemptions.
+- Every structured edit replacement and the legacy edit shape.
 - Deterministic direct-path denial before secret assessment.
 - Deterministic read, grep, write, and edit automatic allows and human review.
 - Direct tools making no classifier provider calls.

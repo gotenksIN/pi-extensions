@@ -257,8 +257,10 @@ Runtime capabilities do not widen direct-tool access.
 
 Model-generated `read`, `grep`, `write`, and `edit` calls use deterministic local secret checks after path policy passes.
 A read requires review when its target matches a known credential or secret path.
+High-confidence path rules cover common SSH, Git, package-manager, cloud, container, Kubernetes, Terraform, Vault, and secret-file locations.
 A grep requires review for a known secret path or a secret-seeking pattern.
 A write or edit requires review for a known secret path, a potential secret payload, or an incomplete bounded payload scan.
+Edit scans include every structured replacement block and the legacy single-replacement shape.
 All other direct content-access calls run without provider inference.
 The extension creates an exact single-use execution permit before the built-in tool runs.
 Approval prompts list each deterministic trigger.
