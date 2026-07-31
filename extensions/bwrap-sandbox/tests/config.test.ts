@@ -2,6 +2,7 @@ import { assert, test } from "./harness.ts";
 import {
   DEFAULT_CLASSIFIER_CONFIG,
   DEFAULT_CONFIG,
+  compileConfig,
   defaultPolicyForProjectGitEntry,
   mergeConfig,
   parseConfigObject,
@@ -13,12 +14,14 @@ test("valid structured configuration is parsed", () => {
       enabled: true,
       isolateNetwork: true,
       sshAgent: false,
+      sandboxDirectory: "~/workbox",
       filesystem: { "/data": "read", "/data/out": "write", "/data/key": "none" },
     }),
     {
       enabled: true,
       isolateNetwork: true,
       sshAgent: false,
+      sandboxDirectory: "~/workbox",
       filesystem: { "/data": "read", "/data/out": "write", "/data/key": "none" },
     },
   );
@@ -35,6 +38,17 @@ test("unknown and malformed security fields fail closed", () => {
   assert.throws(() => parseConfigObject({ filesystem: { "/data": "allow" } }), /none, read, or write/);
   assert.throws(() => parseConfigObject({ isolateNetwork: "yes" }), /must be boolean/);
   assert.throws(() => parseConfigObject({ blockUnknown: true }), /unsupported field/);
+});
+
+test("sandboxDirectory is a strict global-only setting", () => {
+  assert.deepEqual(parseConfigObject({ sandboxDirectory: " ~/workbox " }), { sandboxDirectory: "~/workbox" });
+  for (const value of ["", "   ", false]) {
+    assert.throws(() => parseConfigObject({ sandboxDirectory: value }), /non-empty string/);
+  }
+  assert.throws(
+    () => parseConfigObject({ sandboxDirectory: "~/project-box" }, "project.json", "project"),
+    /global-only setting/,
+  );
 });
 
 test("project configuration cannot set or re-enable the global SSH capability", () => {
@@ -118,9 +132,11 @@ test("configuration layers merge classifier scalar settings", () => {
 test("configuration layers merge filesystem entries and scalar overrides", () => {
   const merged = mergeConfig(DEFAULT_CONFIG, {
     isolateNetwork: true,
+    sandboxDirectory: "/srv/sandbox",
     filesystem: { ":project": "read", "/srv/output": "write" },
   });
   assert.equal(merged.isolateNetwork, true);
+  assert.equal(merged.sandboxDirectory, "/srv/sandbox");
   assert.equal(merged.filesystem[":project"], "read");
   assert.equal(merged.filesystem["/srv/output"], "write");
   assert.equal(merged.filesystem["/tmp"], "read");
@@ -137,8 +153,38 @@ test("project defaults protect only an existing git entry without descendant ass
   assert.equal(defaultPolicyForProjectGitEntry(false).filesystem[":project/.git"], undefined);
 });
 
+test("configured sandbox directory becomes writable only when it exists", () => {
+  const baseResolver = {
+    readlink() { throw new Error("unexpected"); },
+    lstat(path: string) { return path === "/home/tester/workbox" ? undefined : "directory" as const; },
+  };
+  const raw = mergeConfig(DEFAULT_CONFIG, { sandboxDirectory: "~/workbox" });
+  const missing = compileConfig(raw, "/work/project", "/home/tester", baseResolver);
+  assert.deepEqual(missing.sandboxDirectory, { path: "/home/tester/workbox", state: "missing" });
+  assert.equal(missing.filesystem["/home/tester/workbox"], undefined);
+
+  const active = compileConfig(raw, "/work/project", "/home/tester", {
+    ...baseResolver,
+    lstat() { return "directory" as const; },
+  });
+  assert.deepEqual(active.sandboxDirectory, { path: "/home/tester/workbox", state: "active" });
+  assert.equal(active.filesystem["/home/tester/workbox"], "write");
+});
+
+test("configured sandbox directory rejects an existing non-directory", () => {
+  const raw = mergeConfig(DEFAULT_CONFIG, { sandboxDirectory: "~/workbox" });
+  assert.throws(
+    () => compileConfig(raw, "/work/project", "/home/tester", {
+      readlink() { throw new Error("unexpected"); },
+      lstat(path) { return path === "/home/tester/workbox" ? "file" as const : "directory" as const; },
+    }),
+    /not a directory/,
+  );
+});
+
 test("compatibility defaults keep the workspace writable, host tmp read-only, and SSH agent enabled", () => {
-  assert.equal(DEFAULT_CONFIG.filesystem["~/sandbox"], "write");
+  assert.equal(DEFAULT_CONFIG.sandboxDirectory, "~/sandbox");
+  assert.equal(DEFAULT_CONFIG.filesystem["~/sandbox"], undefined);
   assert.equal(DEFAULT_CONFIG.filesystem["/tmp"], "read");
   assert.equal(DEFAULT_CONFIG.sshAgent, true);
   assert.equal(DEFAULT_CONFIG.isolateNetwork, false);

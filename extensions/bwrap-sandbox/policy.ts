@@ -128,6 +128,18 @@ export function resolveConfiguredPath(
   return resolveExistingPath(normalizeConfiguredPath(input, context), context, resolver);
 }
 
+export function resolveOptionalConfiguredDirectory(
+  input: string,
+  context: PathContext,
+  resolver: PathResolver = nodePathResolver,
+): { path: string; state: "active" | "missing" } {
+  const path = resolveConfiguredPath(input, context, resolver);
+  const kind = resolver.lstat(path);
+  if (kind === undefined) return { path, state: "missing" };
+  if (kind !== "directory") throw new Error(`Configured sandbox directory is not a directory: ${path}`);
+  return { path, state: "active" };
+}
+
 export function compilePolicy(
   filesystem: RawFilesystemRules,
   context: PathContext,

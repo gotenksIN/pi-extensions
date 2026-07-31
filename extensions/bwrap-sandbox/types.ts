@@ -36,7 +36,13 @@ export interface RawSandboxConfig {
   readonly filesystem: RawFilesystemRules;
   readonly isolateNetwork: boolean;
   readonly sshAgent: boolean;
+  readonly sandboxDirectory: string;
   readonly classifier: ClassifierConfig;
+}
+
+export interface SandboxDirectoryStatus {
+  readonly path: string;
+  readonly state: "active" | "missing";
 }
 
 export interface CompiledSandboxConfig {
@@ -44,6 +50,7 @@ export interface CompiledSandboxConfig {
   readonly filesystem: CompiledFilesystemPolicy;
   readonly isolateNetwork: boolean;
   readonly sshAgent: boolean;
+  readonly sandboxDirectory: SandboxDirectoryStatus;
   readonly classifier: ClassifierConfig;
 }
 

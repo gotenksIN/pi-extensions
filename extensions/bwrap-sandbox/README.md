@@ -423,6 +423,7 @@ Example global configuration:
   "enabled": true,
   "isolateNetwork": false,
   "sshAgent": true,
+  "sandboxDirectory": "~/sandbox",
   "filesystem": {
     ":project": "write",
     ":project/.git": "read",
@@ -430,7 +431,6 @@ Example global configuration:
     "~/.ssh/config": "read",
     "~/.ssh/known_hosts": "read",
     "~/.pi": "read",
-    "~/sandbox": "write",
     "/tmp": "read"
   },
   "classifier": {
@@ -469,10 +469,14 @@ Example custom pair:
 
 Configuration parsing is strict.
 Unknown fields and invalid values stop startup.
-Project configuration cannot contain `sshAgent` or `classifier`.
+Project configuration cannot contain `sshAgent`, `sandboxDirectory`, or `classifier`.
 
-The default policy makes the existing `~/sandbox` directory writable.
-Create this directory before Pi starts because writable mount sources must exist.
+The global `sandboxDirectory` setting selects one additional writable directory.
+It defaults to `~/sandbox`.
+The extension resolves the configured path to a canonical directory before it starts Bubblewrap.
+If the directory does not exist, the extension omits this optional write rule and continues to start.
+An existing non-directory or an invalid path still stops startup.
+Explicit writable entries in `filesystem` remain strict and must exist.
 
 The default policy protects `:project/.git` only when that entry exists at session start.
 The entry can be a directory or a linked-worktree file.
@@ -492,6 +496,7 @@ Use `/sandbox` to show:
 - Network isolation state.
 - SSH agent capability state.
 - Private temporary directory.
+- Configured sandbox directory and its active or missing state.
 - Session write grants.
 - Classifier state and selected pair.
 - Sanitized classifier diagnostics.

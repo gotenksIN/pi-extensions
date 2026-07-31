@@ -29,6 +29,7 @@ import type {
   ApprovedWriteGrants,
   CompiledSandboxConfig,
   FileAccess,
+  SandboxDirectoryStatus,
   SandboxState,
   SshCapabilityStatus,
 } from "./types.ts";
@@ -68,6 +69,7 @@ export interface SessionStatusSnapshot {
   readonly sshAgent?: boolean;
   readonly sshCapability?: SshCapabilityStatus;
   readonly tempDirectory?: string;
+  readonly sandboxDirectory?: SandboxDirectoryStatus;
   readonly policy: readonly (readonly [string, FileAccess])[];
   readonly grants: readonly string[];
   readonly classifier?: ClassifierStatus;
@@ -467,7 +469,11 @@ class Session implements SandboxSession {
         sshCapability: sshCapabilityStatus(state.runtime.capabilities),
         tempDirectory: state.runtime.tempDirectory,
       } : {}),
-      ...(config ? { isolateNetwork: config.isolateNetwork, sshAgent: config.sshAgent } : {}),
+      ...(config ? {
+        isolateNetwork: config.isolateNetwork,
+        sshAgent: config.sshAgent,
+        sandboxDirectory: config.sandboxDirectory,
+      } : {}),
       policy: config ? Object.entries(config.filesystem) : [],
       grants: state.kind === "ready" ? approvedGrantPaths(state.grants) : [],
       ...(this.safetyGate ? { classifier: this.safetyGate.status() } : {}),

@@ -38,6 +38,9 @@ function formatStatus(status: SessionStatusSnapshot): string {
     `Network isolation: ${status.isolateNetwork === undefined ? "unknown" : status.isolateNetwork ? "enabled" : "disabled"}`,
     `SSH agent capability: ${ssh}`,
     `Private TMPDIR: ${status.tempDirectory ?? "not active"}`,
+    `Sandbox directory: ${status.sandboxDirectory
+      ? `${status.sandboxDirectory.path} (${status.sandboxDirectory.state})`
+      : "not configured"}`,
     "Filesystem policy (unmatched paths are read-only):",
     ...(status.policy.length ? status.policy.map(([path, access]) => `  ${access}: ${path}`) : ["  (unavailable)"]),
     "Session grants:",

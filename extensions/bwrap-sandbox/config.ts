@@ -1,10 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { compilePolicy, type PathResolver } from "./policy.ts";
+import { compilePolicy, resolveOptionalConfiguredDirectory, type PathResolver } from "./policy.ts";
 import type {
   ClassifierConfig,
   ClassifierPairConfig,
   ClassifierReasoning,
+  CompiledFilesystemPolicy,
   FileAccess,
   RawFilesystemRules,
   RawSandboxConfig,
@@ -34,6 +35,7 @@ export const DEFAULT_CONFIG: RawSandboxConfig = {
   enabled: true,
   isolateNetwork: false,
   sshAgent: true,
+  sandboxDirectory: "~/sandbox",
   classifier: DEFAULT_CLASSIFIER_CONFIG,
   filesystem: {
     ":project": "write",
@@ -48,7 +50,6 @@ export const DEFAULT_CONFIG: RawSandboxConfig = {
     "~/.ssh/id_rsa.pub": "read",
     "~/.ssh/id_dsa.pub": "read",
     "~/.pi": "read",
-    "~/sandbox": "write",
     "/tmp": "read",
   },
 };
@@ -63,6 +64,7 @@ export interface RawConfigOverride {
   readonly filesystem?: RawFilesystemRules;
   readonly isolateNetwork?: boolean;
   readonly sshAgent?: boolean;
+  readonly sandboxDirectory?: string;
   readonly classifier?: Partial<ClassifierConfig>;
 }
 
@@ -73,7 +75,7 @@ export function defaultPolicyForProjectGitEntry(hasGitEntry: boolean): RawSandbo
   return { ...DEFAULT_CONFIG, filesystem };
 }
 
-const CONFIG_FIELDS = new Set(["enabled", "filesystem", "isolateNetwork", "sshAgent", "classifier"]);
+const CONFIG_FIELDS = new Set(["enabled", "filesystem", "isolateNetwork", "sshAgent", "sandboxDirectory", "classifier"]);
 const CLASSIFIER_FIELDS = new Set(["enabled", "pairs", "stage1TimeoutMs", "stage2TimeoutMs", "maxRetries"]);
 const PAIR_FIELDS = new Set(["provider", "stage1", "stage2"]);
 const STAGE_FIELDS = new Set(["model", "reasoning"]);
@@ -105,18 +107,28 @@ export function parseConfigObject(
   if (scope === "project" && Object.prototype.hasOwnProperty.call(value, "classifier")) {
     throw sourceError(source, "classifier is a global-only security setting and is not allowed in project configuration");
   }
+  if (scope === "project" && Object.prototype.hasOwnProperty.call(value, "sandboxDirectory")) {
+    throw sourceError(source, "sandboxDirectory is a global-only setting and is not allowed in project configuration");
+  }
 
   const result: {
     enabled?: boolean;
     filesystem?: RawFilesystemRules;
     isolateNetwork?: boolean;
     sshAgent?: boolean;
+    sandboxDirectory?: string;
     classifier?: Partial<ClassifierConfig>;
   } = {};
   for (const key of ["enabled", "isolateNetwork", "sshAgent"] as const) {
     if (value[key] === undefined) continue;
     if (typeof value[key] !== "boolean") throw sourceError(source, `${key} must be boolean`);
     result[key] = value[key];
+  }
+  if (value.sandboxDirectory !== undefined) {
+    if (typeof value.sandboxDirectory !== "string" || !value.sandboxDirectory.trim()) {
+      throw sourceError(source, "sandboxDirectory must be a non-empty string");
+    }
+    result.sandboxDirectory = value.sandboxDirectory.trim();
   }
 
   if (value.filesystem !== undefined) {
@@ -205,6 +217,7 @@ export function mergeConfig(base: RawSandboxConfig, override: RawConfigOverride)
     enabled: override.enabled ?? base.enabled,
     isolateNetwork: override.isolateNetwork ?? base.isolateNetwork,
     sshAgent: override.sshAgent ?? base.sshAgent,
+    sandboxDirectory: override.sandboxDirectory ?? base.sandboxDirectory,
     classifier: { ...base.classifier, ...override.classifier },
     filesystem: { ...base.filesystem, ...override.filesystem },
   };
@@ -221,6 +234,28 @@ function readConfigFile(path: string, scope: ConfigScope): RawConfigOverride {
   return parseConfigObject(value, path, scope);
 }
 
+export function compileConfig(
+  raw: RawSandboxConfig,
+  cwd: string,
+  home: string,
+  resolver?: PathResolver,
+): CompiledSandboxConfig {
+  const context = { cwd, home };
+  const sandboxDirectory = resolveOptionalConfiguredDirectory(raw.sandboxDirectory, context, resolver);
+  const explicitPolicy = compilePolicy(raw.filesystem, context, resolver);
+  const filesystem = sandboxDirectory.state === "active" && explicitPolicy[sandboxDirectory.path] === undefined
+    ? Object.fromEntries(
+      [...Object.entries(explicitPolicy), [sandboxDirectory.path, "write" as FileAccess]]
+        .sort(([left], [right]) => left.localeCompare(right)),
+    ) as CompiledFilesystemPolicy
+    : explicitPolicy;
+  return {
+    ...raw,
+    sandboxDirectory,
+    filesystem,
+  };
+}
+
 /** Load trusted layers strictly. Parse, schema, and path errors fail closed. */
 export function loadConfig(
   cwd: string,
@@ -234,8 +269,5 @@ export function loadConfig(
     readConfigFile(paths.global, "global"),
   );
   if (includeProject) raw = mergeConfig(raw, readConfigFile(paths.project, "project"));
-  return {
-    ...raw,
-    filesystem: compilePolicy(raw.filesystem, { cwd, home }, resolver),
-  };
+  return compileConfig(raw, cwd, home, resolver);
 }
