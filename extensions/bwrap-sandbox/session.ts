@@ -363,7 +363,6 @@ class Session implements SandboxSession {
         `Requested path: ${rawPath}`,
         `Resolved path: ${admission.path}`,
         ...(needsSafetyReview ? [`Classifier result: ${classified.reason ?? "review required"}`] : []),
-        "This is an application-level permission gate, not OS containment.",
       ].join("\n"),
       choices,
     );
