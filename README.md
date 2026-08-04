@@ -25,6 +25,23 @@ Run this command from the repository root.
 It replaces the existing global `AGENTS.md` link or file.
 Keep the link in place so Pi and its agents use the repository rules.
 
+Install the tracked custom subagent definitions:
+
+```bash
+mkdir -p "$HOME/.pi/agent/agents"
+ln -sfn "$PWD/agents/"*.md "$HOME/.pi/agent/agents/"
+```
+
+Run these commands from the repository root.
+They preserve custom agents with other names and replace agents with the same filenames.
+The definitions convert the `coder`, `explore`, `general`, and `reasoner` entries from the author's [OpenCode configuration](https://github.com/gotenksIN/scripts/blob/master/opencode/opencode.json) to the `pi-subagents` Markdown format.
+`Explore.md` uses the exact built-in name so it overrides the default `pi-subagents` `Explore` agent without a case-insensitive name conflict.
+OpenCode model suffixes such as `#high` become separate Pi `thinking: high` fields.
+The Explore agent also exposes this repository's `websearch_cited` tool.
+
+After setup, `/agents` lists the tracked definitions as global agents.
+Agent names are case-insensitive, so `explore` resolves to `Explore.md`.
+
 Pi may need a JavaScript package manager when it installs a Git package.
 The standalone Pi binary does not include Node.js or npm.
 Install Bun temporarily when required:

@@ -20,6 +20,18 @@
 - Never use `/tmp` for temporary work. Use `~/sandbox` instead for work outside the current workspace.
 - Never use `/dev/null` under any circumstances, including for suppressing command output, error redirection (2>/dev/null), piping, testing file existence, or sandbox checks.
 
+## Custom Subagent Definitions
+
+- Keep global custom subagent definitions in `agents/*.md`.
+- The setup instructions link these files into `~/.pi/agent/agents/`, where `pi-subagents` discovers them.
+- Keep the definitions aligned with `https://github.com/gotenksIN/scripts/blob/master/opencode/opencode.json` when that source configuration changes.
+- Convert an OpenCode model value such as `provider/model#high` to separate Pi `model: provider/model` and `thinking: high` fields.
+- Use `Explore.md` with this capitalization to override the built-in `pi-subagents` agent and avoid a case-insensitive collision with `explore.md`.
+- Map OpenCode read-only agents to Pi tool allowlists that omit `edit` and `write`.
+- Use `ext:websearch/websearch_cited` when an agent needs this repository's grounded web search tool.
+- Use `prompt_mode: append` when the custom instructions must retain the parent Pi prompt and repository rules.
+- Validate changed definitions with `loadCustomAgents()` from the installed `pi-subagents` package.
+
 ## Git Workflow
 
 - Never create commits unless the user explicitly asks for them.
