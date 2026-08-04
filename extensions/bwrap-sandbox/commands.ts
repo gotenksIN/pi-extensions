@@ -26,10 +26,10 @@ function formatStatus(status: SessionStatusSnapshot): string {
   const classifierLines = classifier
     ? [
       `Safety classifier: ${classifier.state.toUpperCase()}`,
-      ...classifier.pairs.map((pair) => `  ${pair.available ? "available" : "unavailable"}: ${pair.label}`),
+      `  ${classifier.reviewer.available ? "available" : "unavailable"}: ${classifier.reviewer.label}`,
       ...(classifier.lastOutcome ? [`  Last outcome: ${classifier.lastOutcome}`] : []),
       ...(classifier.state === "unavailable"
-        ? ["  Set provider, model, and reasoning for both stages in global classifier.pairs."]
+        ? ["  Configure classifier.reviewer in the global sandbox configuration."]
         : []),
     ]
     : ["Safety classifier: not initialized"];
@@ -63,7 +63,7 @@ export function registerSandboxCommands(pi: ExtensionAPI, session: CommandSessio
   });
 
   pi.registerCommand("sandbox-test", {
-    description: "Run sandbox tests; add 'live' for provider compatibility",
+    description: "Run sandbox tests; add 'live' for reviewer compatibility",
     handler: async (args, ctx) => {
       const mode = args.trim();
       if (mode && mode !== "live") {

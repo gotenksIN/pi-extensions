@@ -64,50 +64,29 @@ test("project configuration cannot set or re-enable the global SSH capability", 
   );
 });
 
-test("classifier defaults use Luna before Gemini and the OpenAI 5.4 pair", () => {
-  assert.deepEqual(DEFAULT_CLASSIFIER_CONFIG.pairs, [
-    {
-      provider: "openai",
-      stage1: { model: "gpt-5.6-luna", reasoning: "low" },
-      stage2: { model: "gpt-5.6-luna", reasoning: "medium" },
-    },
-    {
-      provider: "google",
-      stage1: { model: "gemini-3.5-flash-lite", reasoning: "minimal" },
-      stage2: { model: "gemini-3.6-flash", reasoning: "low" },
-    },
-    {
-      provider: "openai",
-      stage1: { model: "gpt-5.4-nano", reasoning: "none" },
-      stage2: { model: "gpt-5.4-mini", reasoning: "low" },
-    },
-  ]);
+test("classifier defaults use one Luna reviewer", () => {
+  assert.deepEqual(DEFAULT_CLASSIFIER_CONFIG, {
+    enabled: true,
+    reviewer: { provider: "openai", model: "gpt-5.6-luna", reasoning: "low" },
+    timeoutMs: 30_000,
+    maxRetries: 1,
+  });
 });
 
-test("global configuration accepts complete custom classifier pairs", () => {
+test("global configuration accepts one custom classifier reviewer", () => {
   const parsed = parseConfigObject({
     classifier: {
       enabled: true,
-      stage1TimeoutMs: 5_000,
-      stage2TimeoutMs: 8_000,
+      timeoutMs: 8_000,
       maxRetries: 0,
-      pairs: [{
-        provider: "local",
-        stage1: { model: "fast", reasoning: "off" },
-        stage2: { model: "strong", reasoning: "high" },
-      }],
+      reviewer: { provider: "local", model: "reviewer", reasoning: "high" },
     },
   });
   assert.deepEqual(parsed.classifier, {
     enabled: true,
-    stage1TimeoutMs: 5_000,
-    stage2TimeoutMs: 8_000,
+    timeoutMs: 8_000,
     maxRetries: 0,
-    pairs: [{
-      provider: "local",
-      stage1: { model: "fast", reasoning: "off" },
-      stage2: { model: "strong", reasoning: "high" },
-    }],
+    reviewer: { provider: "local", model: "reviewer", reasoning: "high" },
   });
 });
 
@@ -117,12 +96,11 @@ test("classifier configuration is strict and global-only", () => {
     /global-only security setting/,
   );
   assert.throws(() => parseConfigObject({ classifier: { extra: true } }), /unsupported classifier field/);
-  assert.throws(() => parseConfigObject({ classifier: { pairs: [] } }), /non-empty array/);
   assert.throws(
-    () => parseConfigObject({ classifier: { pairs: [{ provider: "p", stage1: {}, stage2: {} }] } }),
-    /stage1.model/,
+    () => parseConfigObject({ classifier: { reviewer: { provider: "p", model: "", reasoning: "low" } } }),
+    /reviewer.model/,
   );
-  assert.throws(() => parseConfigObject({ classifier: { stage1TimeoutMs: 999 } }), /1000 through 120000/);
+  assert.throws(() => parseConfigObject({ classifier: { timeoutMs: 999 } }), /1000 through 120000/);
   assert.throws(() => parseConfigObject({ classifier: { maxRetries: 3 } }), /integer from 0 through 2/);
 });
 
@@ -130,8 +108,8 @@ test("configuration layers merge classifier scalar settings", () => {
   const merged = mergeConfig(DEFAULT_CONFIG, { classifier: { enabled: false, maxRetries: 0 } });
   assert.equal(merged.classifier.enabled, false);
   assert.equal(merged.classifier.maxRetries, 0);
-  assert.equal(merged.classifier.stage1TimeoutMs, 20_000);
-  assert.deepEqual(merged.classifier.pairs, DEFAULT_CLASSIFIER_CONFIG.pairs);
+  assert.equal(merged.classifier.timeoutMs, 30_000);
+  assert.deepEqual(merged.classifier.reviewer, DEFAULT_CLASSIFIER_CONFIG.reviewer);
 });
 
 test("configuration layers merge filesystem entries and scalar overrides", () => {

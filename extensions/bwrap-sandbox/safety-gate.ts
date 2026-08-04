@@ -1,5 +1,5 @@
-import { SafetyClassifier, type ClassifierStatus } from "./classifier.ts";
-import { PiClassifierStageInvoker, type ClassifierModelRegistry } from "./classifier-provider.ts";
+import { REVIEWER_UNAVAILABLE_REASON, SafetyClassifier, type ClassifierStatus } from "./classifier.ts";
+import { PiClassifierInvoker, type ClassifierModelRegistry } from "./classifier-provider.ts";
 import { buildSafetyEvidence, actionDigest, type SafetyAction } from "./safety-evidence.ts";
 import type { ClassifierConfig } from "./types.ts";
 
@@ -35,6 +35,9 @@ export interface SafetyAuthorizationRequest {
   readonly input: unknown;
   readonly cwd: string;
   readonly signal?: AbortSignal;
+  readonly evidenceInput?: unknown;
+  readonly omitPriorActions?: boolean;
+  readonly requireClassifierReady?: boolean;
 }
 
 export interface SafetyAuthorizationResult {
@@ -46,18 +49,22 @@ export class SafetyGate {
   private readonly classifier: SafetyClassifier;
   private readonly permits = new Map<string, ExecutionPermit>();
   private pendingBashRetry: BashRetryRecord | undefined;
-  private approvedBashRetry: BashRetryRecord | undefined;
+  private futureBashTicket: BashRetryRecord | undefined;
   private generation = 0;
 
-  constructor(config: ClassifierConfig, registry: ClassifierModelRegistry) {
-    this.classifier = new SafetyClassifier(config, new PiClassifierStageInvoker(registry));
+  constructor(
+    config: ClassifierConfig,
+    registry: ClassifierModelRegistry,
+    private readonly activeSandboxDirectory?: string,
+  ) {
+    this.classifier = new SafetyClassifier(config, new PiClassifierInvoker(registry));
   }
 
   async start(): Promise<ClassifierStatus> {
     this.generation += 1;
     this.permits.clear();
     this.pendingBashRetry = undefined;
-    this.approvedBashRetry = undefined;
+    this.futureBashTicket = undefined;
     return this.classifier.inspectAvailability();
   }
 
@@ -65,7 +72,7 @@ export class SafetyGate {
     this.generation += 1;
     this.permits.clear();
     this.pendingBashRetry = undefined;
-    this.approvedBashRetry = undefined;
+    this.futureBashTicket = undefined;
   }
 
   status(): ClassifierStatus {
@@ -82,17 +89,17 @@ export class SafetyGate {
     });
   }
 
-  authorizeBashRetry(toolCallId: string, input: unknown, cwd: string): boolean {
-    const retry = this.approvedBashRetry;
-    this.approvedBashRetry = undefined;
-    if (!retry) return false;
+  claimFutureBashTicket(toolCallId: string, input: unknown, cwd: string): boolean {
+    const ticket = this.futureBashTicket;
+    this.futureBashTicket = undefined;
+    if (!ticket) return false;
     let digest: string;
     try {
       digest = actionDigest({ tool: "bash", input, cwd });
     } catch {
       return false;
     }
-    if (retry.generation !== this.generation || retry.cwd !== cwd || retry.digest !== digest) return false;
+    if (ticket.generation !== this.generation || ticket.cwd !== cwd || ticket.digest !== digest) return false;
     this.addPermit(toolCallId, "bash", input, cwd);
     return true;
   }
@@ -124,16 +131,16 @@ export class SafetyGate {
     const retry = this.pendingBashRetry;
     this.pendingBashRetry = undefined;
     if (!retry || retry.generation !== this.generation || retry.digest !== digest) return false;
-    this.approvedBashRetry = retry;
+    this.futureBashTicket = retry;
     return true;
   }
 
-  approveExactBashRetry(input: unknown, cwd: string): void {
+  createFutureBashTicket(input: unknown, cwd: string): void {
     const data = input && typeof input === "object" ? input as Record<string, unknown> : {};
     if (typeof data.command !== "string" || Buffer.byteLength(data.command, "utf8") > 32 * 1024) {
-      throw new Error("The proactive Bash input is too large for an exact retry approval");
+      throw new Error("The proactive Bash input is too large for an exact future approval");
     }
-    this.approvedBashRetry = {
+    this.futureBashTicket = {
       cwd,
       digest: actionDigest({ tool: "bash", input, cwd }),
       command: data.command,
@@ -146,17 +153,27 @@ export class SafetyGate {
   }
 
   async classify(request: SafetyAuthorizationRequest): Promise<SafetyAuthorizationResult> {
-    if (!requiresSafetyClassification(request.toolName) || !this.classifier.status().enabled) {
-      return { allowed: true };
+    if (!requiresSafetyClassification(request.toolName)) return { allowed: true };
+    const status = this.classifier.status();
+    if (request.requireClassifierReady && status.state !== "ready") {
+      return {
+        allowed: false,
+        reason: status.state === "disabled"
+          ? "Safety classification is disabled"
+          : REVIEWER_UNAVAILABLE_REASON,
+      };
     }
+    if (!status.enabled) return { allowed: true };
     let built: ReturnType<typeof buildSafetyEvidence>;
     try {
       built = buildSafetyEvidence({
         branch: request.branch,
         toolCallId: request.toolCallId,
         toolName: request.toolName,
-        input: request.input,
+        input: request.evidenceInput ?? request.input,
         cwd: request.cwd,
+        activeSandboxDirectory: this.activeSandboxDirectory,
+        omitPriorActions: request.omitPriorActions,
       });
     } catch (error) {
       return {

@@ -18,7 +18,7 @@ import {
   deriveCapabilityEnvironment,
   revalidateRuntimeCapabilities,
 } from "./capabilities.ts";
-import { emptyApprovedGrants } from "./grants.ts";
+import { emptyApprovedGrants, validateOneShotGrantRequest } from "./grants.ts";
 import {
   FRESH_RUNTIME_PATHS,
   validateRuntimePolicy,
@@ -182,13 +182,30 @@ export class BubblewrapRuntime {
     command: string,
     cwd: string,
     grants: ApprovedWriteGrants,
+    transientWritePaths: readonly string[],
     callEnvironment: NodeJS.ProcessEnv,
   ): { args: string[]; environment: NodeJS.ProcessEnv } {
     if (this.stopped) throw new Error("Bubblewrap runtime has shut down");
     for (const path of grants.paths) validateWritableRuntimePath(path, this.protectedPaths, "subtree");
+    for (const path of transientWritePaths) {
+      const admission = validateOneShotGrantRequest(path, "exact", {
+        cwd: "/",
+        home: "/",
+        policy: this.config.filesystem,
+        protectedPaths: this.protectedPaths,
+      }, grants);
+      if (admission.path !== path) {
+        throw new Error(`One-shot sandbox mount source changed after approval: ${path}`);
+      }
+    }
 
     const plan = createMountPlan(
-      { policy: this.config.filesystem, grants, capabilities: this.capabilities },
+      {
+        policy: this.config.filesystem,
+        grants,
+        capabilities: this.capabilities,
+        transientWritePaths,
+      },
       inspectPathKind,
     );
     const args = [
@@ -204,12 +221,15 @@ export class BubblewrapRuntime {
     };
   }
 
-  operations(grants: ApprovedWriteGrants): BashOperations {
+  operations(grants: ApprovedWriteGrants, transientWritePaths: readonly string[] = []): BashOperations {
+    let availableTransientWritePaths = transientWritePaths;
     return {
       exec: async (command, cwd, { onData, signal, timeout, env: callEnv }) => {
+        const spawnTransientWritePaths = availableTransientWritePaths;
+        availableTransientWritePaths = [];
         if (signal?.aborted) throw new Error("aborted");
         if (inspectPathKind(cwd) !== "directory") throw new Error(`Working directory does not exist: ${cwd}`);
-        const prepared = this.prepareSpawn(command, cwd, grants, callEnv ?? {});
+        const prepared = this.prepareSpawn(command, cwd, grants, spawnTransientWritePaths, callEnv ?? {});
 
         return new Promise((resolve, reject) => {
           revalidateRuntimeCapabilities(this.capabilities);

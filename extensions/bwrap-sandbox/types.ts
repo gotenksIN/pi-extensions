@@ -12,22 +12,16 @@ export type CompiledFilesystemPolicy = Readonly<Record<string, FileAccess>> & {
 
 export type ClassifierReasoning = "none" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
-export interface ClassifierStageConfig {
+export interface ClassifierReviewerConfig {
+  readonly provider: string;
   readonly model: string;
   readonly reasoning: ClassifierReasoning;
 }
 
-export interface ClassifierPairConfig {
-  readonly provider: string;
-  readonly stage1: ClassifierStageConfig;
-  readonly stage2: ClassifierStageConfig;
-}
-
 export interface ClassifierConfig {
   readonly enabled: boolean;
-  readonly pairs: readonly ClassifierPairConfig[];
-  readonly stage1TimeoutMs: number;
-  readonly stage2TimeoutMs: number;
+  readonly reviewer: ClassifierReviewerConfig;
+  readonly timeoutMs: number;
   readonly maxRetries: number;
 }
 

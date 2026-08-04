@@ -48,12 +48,14 @@ const createMountPlan = (
   inspectPath: (path: string) => PathKind,
   sshAgent = true,
   inheritedSocket = false,
+  transientWritePaths: readonly string[] = [],
 ) => {
   const policy = rules as unknown as CompiledFilesystemPolicy;
   return compileMountPlan({
     policy,
     grants: { paths: Object.keys(grants) } as unknown as ApprovedWriteGrants,
     capabilities: capabilities(policy, sshAgent, inheritedSocket),
+    transientWritePaths,
   }, inspectPath);
 };
 
@@ -273,4 +275,31 @@ test("a broad grant cannot override a denied descendant or create a socket capab
   const plan = createMountPlan(policy, { "/workspace": "write" }, inspect({}));
   assert.ok(indexOf(plan, "bind", "/workspace") < indexOf(plan, "mask-directory", "/workspace/secret"));
   assert.equal(plan.some((operation) => operation.kind === "bind" && operation.sourceType === "socket"), false);
+});
+
+test("one transient path is writable for one mount plan while none remains final", () => {
+  const policy = { "/workspace": "read", "/workspace/secret": "none" } as const;
+  const plan = createMountPlan(
+    policy,
+    {},
+    inspect({}),
+    true,
+    false,
+    ["/workspace/.git", "/workspace/secret"],
+  );
+  assert.deepEqual(
+    plan.find((operation) => operation.kind === "bind" && operation.destination === "/workspace/.git"),
+    {
+      kind: "bind",
+      source: "/workspace/.git",
+      destination: "/workspace/.git",
+      sourceType: "directory",
+      writable: true,
+    },
+  );
+  assert.equal(
+    plan.some((operation) => operation.kind === "bind" && operation.destination === "/workspace/secret"),
+    false,
+  );
+  assert.ok(indexOf(plan, "bind", "/workspace/.git") < indexOf(plan, "remount-readonly", "/workspace"));
 });

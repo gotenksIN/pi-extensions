@@ -10,6 +10,7 @@ import {
   approvedGrantPaths,
   emptyApprovedGrants,
   validateDirectWrite,
+  validateOneShotGrantRequest,
   validatePersistentGrantRequest,
   type GrantContext,
   type GrantScope,
@@ -21,6 +22,7 @@ import {
 import type { SandboxDisableSource } from "./process-state.ts";
 import { effectiveAccess, resolveExistingPath } from "./policy.ts";
 import { BubblewrapRuntime, findTrustedBwrap, probeBwrap } from "./runtime.ts";
+import { actionDigest, canonicalJson } from "./safety-evidence.ts";
 import { SafetyGate } from "./safety-gate.ts";
 import type { ClassifierStatus } from "./classifier.ts";
 import type { ClassifierModelRegistry } from "./classifier-provider.ts";
@@ -81,6 +83,11 @@ export interface PersistentGrantResult {
   readonly bashApproved: boolean;
 }
 
+export interface OneShotWriteResult {
+  readonly path: string;
+  readonly authorizedBy: "classifier" | "human";
+}
+
 export interface ProactiveBashAccess {
   readonly toolCallId: string;
   readonly input: unknown;
@@ -99,7 +106,7 @@ export interface SandboxSession {
   state(): SandboxState;
   reason(): string;
   projectCwd(): string;
-  operations(): BashOperations;
+  operations(transientWritePaths?: readonly string[]): BashOperations;
   authorizeDirectRead(
     toolCallId: string,
     toolName: string,
@@ -115,13 +122,18 @@ export interface SandboxSession {
     ctx: ExtensionContext,
   ): Promise<void>;
   authorizeBash(toolCallId: string, input: unknown, ctx: ExtensionContext): Promise<void>;
-  consumeSafetyPermit(toolCallId: string, toolName: string, input: unknown): void;
+  consumeSafetyPermit(toolCallId: string, toolName: string, input: unknown): readonly string[];
   recordBashResult(input: unknown, exitCode: number | null): void;
   requestPersistentWrite(
     rawPath: string,
     scope: GrantScope,
     proactiveBash?: ProactiveBashAccess,
   ): Promise<PersistentGrantResult>;
+  requestOneShotWrite(
+    rawPath: string,
+    scope: GrantScope,
+    proactiveBash: ProactiveBashAccess,
+  ): Promise<OneShotWriteResult>;
   status(): SessionStatusSnapshot;
   classifierTestConfig(): ClassifierConfig | undefined;
   manualTestExecution(): ManualTestExecution;
@@ -135,10 +147,20 @@ function unavailableOperations(reason: string): BashOperations {
   return { async exec() { throw new Error(`Sandbox unavailable; refusing unsandboxed bash: ${reason}`); } };
 }
 
+interface OneShotWriteRecord {
+  readonly path: string;
+  readonly cwd: string;
+  readonly digest: string;
+  readonly generation: number;
+}
+
 class Session implements SandboxSession {
   private readonly home = homedir();
   private readonly approval: ApprovalChannel;
   private safetyGate: SafetyGate | undefined;
+  private lifecycleGeneration = 0;
+  private futureOneShotWrite: OneShotWriteRecord | undefined;
+  private readonly claimedOneShotWrites = new Map<string, OneShotWriteRecord>();
   private current: LifecycleState = {
     kind: "error",
     reason: "session has not started",
@@ -155,6 +177,9 @@ class Session implements SandboxSession {
 
   async start(ctx: ExtensionContext, disableSource: SandboxDisableSource): Promise<void> {
     const previous = this.current.kind === "ready" ? this.current.runtime : undefined;
+    this.lifecycleGeneration += 1;
+    this.futureOneShotWrite = undefined;
+    this.claimedOneShotWrites.clear();
     this.current = { kind: "error", reason: "initializing", projectCwd: ctx.cwd };
     this.approval.detach();
     this.safetyGate?.stop();
@@ -206,12 +231,13 @@ class Session implements SandboxSession {
       this.safetyGate = new SafetyGate(
         config.classifier,
         ctx.modelRegistry as unknown as ClassifierModelRegistry,
+        config.sandboxDirectory.state === "active" ? config.sandboxDirectory.path : undefined,
       );
       const classifier = await this.safetyGate.start();
       ctx.ui.setStatus("sandbox", ctx.ui.theme.fg("accent", "bwrap sandbox active"));
       if (classifier.state === "unavailable") {
         ctx.ui.notify(
-          "Bash safety classification is unavailable. Model-generated Bash calls will require human review. Set classifier.pairs in the global sandbox configuration. Set the provider, model, and reasoning level for both stages.",
+          "The automatic reviewer is unavailable. Model-generated Bash calls will require human review. Configure classifier.reviewer in the global sandbox configuration.",
           "warning",
         );
       } else if (classifier.state === "disabled") {
@@ -239,6 +265,9 @@ class Session implements SandboxSession {
 
   async shutdown(ctx: ExtensionContext): Promise<void> {
     const runtime = this.current.kind === "ready" ? this.current.runtime : undefined;
+    this.lifecycleGeneration += 1;
+    this.futureOneShotWrite = undefined;
+    this.claimedOneShotWrites.clear();
     this.current = { kind: "error", reason: "session is shutting down", projectCwd: this.current.projectCwd };
     this.approval.detach();
     this.safetyGate?.stop();
@@ -247,9 +276,9 @@ class Session implements SandboxSession {
     ctx.ui.setStatus("sandbox", undefined);
   }
 
-  operations(): BashOperations {
+  operations(transientWritePaths: readonly string[] = []): BashOperations {
     return this.current.kind === "ready"
-      ? this.current.runtime.operations(this.current.grants)
+      ? this.current.runtime.operations(this.current.grants, transientWritePaths)
       : unavailableOperations(this.current.reason);
   }
 
@@ -372,11 +401,33 @@ class Session implements SandboxSession {
     }
   }
 
+  private claimOneShotWrite(input: unknown, cwd: string): OneShotWriteRecord | undefined {
+    const record = this.futureOneShotWrite;
+    this.futureOneShotWrite = undefined;
+    if (!record) return undefined;
+    let digest: string;
+    try {
+      digest = actionDigest({ tool: "bash", input, cwd });
+    } catch {
+      return undefined;
+    }
+    if (
+      record.generation !== this.lifecycleGeneration
+      || record.cwd !== cwd
+      || record.digest !== digest
+    ) return undefined;
+    return record;
+  }
+
   async authorizeBash(toolCallId: string, input: unknown, ctx: ExtensionContext): Promise<void> {
     const state = this.ready();
     const gate = this.safetyGate;
     if (!gate) throw new Error("Safety classification is unavailable");
-    if (gate.authorizeBashRetry(toolCallId, input, state.projectCwd)) return;
+    const oneShotWrite = this.claimOneShotWrite(input, state.projectCwd);
+    if (gate.claimFutureBashTicket(toolCallId, input, state.projectCwd)) {
+      if (oneShotWrite) this.claimedOneShotWrites.set(toolCallId, oneShotWrite);
+      return;
+    }
     const result = await gate.authorize({
       branch: ctx.sessionManager.getBranch(),
       toolCallId,
@@ -409,11 +460,29 @@ class Session implements SandboxSession {
     }
   }
 
-  consumeSafetyPermit(toolCallId: string, toolName: string, input: unknown): void {
+  consumeSafetyPermit(toolCallId: string, toolName: string, input: unknown): readonly string[] {
     this.ready();
     const gate = this.safetyGate;
     if (!gate) throw new Error("Safety classification is unavailable");
+    const claimed = this.claimedOneShotWrites.get(toolCallId);
+    this.claimedOneShotWrites.delete(toolCallId);
     gate.consumePermit(toolCallId, toolName, input, this.projectCwd());
+    if (!claimed || toolName !== "bash") return [];
+
+    let digest: string;
+    try {
+      digest = actionDigest({ tool: toolName, input, cwd: this.projectCwd() });
+    } catch {
+      throw new Error("One-shot write access does not match the final Bash input");
+    }
+    if (
+      claimed.generation !== this.lifecycleGeneration
+      || claimed.cwd !== this.projectCwd()
+      || claimed.digest !== digest
+    ) {
+      throw new Error("One-shot write access does not match the final Bash input");
+    }
+    return [claimed.path];
   }
 
   recordBashResult(input: unknown, exitCode: number | null): void {
@@ -485,7 +554,7 @@ class Session implements SandboxSession {
     const next = addApprovedGrant(state.grants, admission.path, this.grantContext(state));
     const bashApproved = choice === grantAndRetry;
     if (bashApproved) {
-      if (proactiveBash) gate.approveExactBashRetry(proactiveBash.input, state.projectCwd);
+      if (proactiveBash) gate.createFutureBashTicket(proactiveBash.input, state.projectCwd);
       else if (!retry || !gate.approvePendingBashRetry(retry.digest)) {
         throw new Error("The exact Bash retry approval expired before the grant was applied");
       }
@@ -494,6 +563,80 @@ class Session implements SandboxSession {
     this.current = { ...state, grants: next };
     this.approval.notify(`Sandbox granted write access for this session: ${admission.path}`);
     return { path: admission.path, granted: true, bashApproved };
+  }
+
+  async requestOneShotWrite(
+    rawPath: string,
+    scope: GrantScope,
+    proactiveBash: ProactiveBashAccess,
+  ): Promise<OneShotWriteResult> {
+    let state = this.ready();
+    const gate = this.safetyGate;
+    if (!gate) throw new Error("Safety classification is unavailable");
+    const admission = validateOneShotGrantRequest(rawPath, scope, this.grantContext(state), state.grants);
+    const data = proactiveBash.input && typeof proactiveBash.input === "object"
+      ? proactiveBash.input as Record<string, unknown>
+      : {};
+    if (typeof data.command !== "string") {
+      throw new Error("One-shot sandbox access requires an exact Bash input");
+    }
+    const exactBashInput = canonicalJson(proactiveBash.input);
+    const evidenceInput = {
+      bash: proactiveBash.input,
+      filesystemAccess: {
+        canonicalWritePath: admission.path,
+        disposition: "one-shot",
+        scope,
+      },
+    };
+    const result = await gate.classify({
+      branch: proactiveBash.ctx.sessionManager.getBranch(),
+      toolCallId: proactiveBash.toolCallId,
+      toolName: "bash",
+      input: proactiveBash.input,
+      evidenceInput,
+      omitPriorActions: true,
+      requireClassifierReady: true,
+      cwd: state.projectCwd,
+      signal: proactiveBash.ctx.signal,
+    });
+
+    let authorizedBy: "classifier" | "human" = "classifier";
+    if (!result.allowed) {
+      const choice = await this.approval.request(
+        [
+          "One-shot filesystem access requires human review.",
+          `Requested path: ${rawPath}`,
+          `Access scope: ${scope}`,
+          `Resolved write path: ${admission.path}`,
+          `Exact Bash input: ${exactBashInput}`,
+          `Classifier result: ${result.reason ?? "review required"}`,
+          "This approval applies to this exact Bash call and path once. It does not create a session grant. Bubblewrap remains active.",
+        ].join("\n"),
+        ["No - block", "Yes - allow this exact Bash call with one-shot write access"],
+      );
+      if (choice !== "Yes - allow this exact Bash call with one-shot write access") {
+        throw new Error(`Sandbox one-shot access denied for ${admission.path}`);
+      }
+      authorizedBy = "human";
+    }
+    if (proactiveBash.ctx.signal?.aborted) throw new Error("One-shot sandbox access was cancelled");
+
+    state = this.ready();
+    if (this.safetyGate !== gate) throw new Error("One-shot sandbox approval expired because the session changed");
+    const revalidated = validateOneShotGrantRequest(rawPath, scope, this.grantContext(state), state.grants);
+    if (revalidated.path !== admission.path) {
+      throw new Error(`One-shot sandbox mount source changed after approval: ${admission.path}`);
+    }
+    const record: OneShotWriteRecord = {
+      path: revalidated.path,
+      cwd: state.projectCwd,
+      digest: actionDigest({ tool: "bash", input: proactiveBash.input, cwd: state.projectCwd }),
+      generation: this.lifecycleGeneration,
+    };
+    gate.createFutureBashTicket(proactiveBash.input, state.projectCwd);
+    this.futureOneShotWrite = record;
+    return { path: revalidated.path, authorizedBy };
   }
 
   status(): SessionStatusSnapshot {

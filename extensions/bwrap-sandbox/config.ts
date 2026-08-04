@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { compilePolicy, resolveOptionalConfiguredDirectory, type PathResolver } from "./policy.ts";
 import type {
   ClassifierConfig,
-  ClassifierPairConfig,
+  ClassifierReviewerConfig,
   ClassifierReasoning,
   CompiledFilesystemPolicy,
   FileAccess,
@@ -14,25 +14,12 @@ import type {
 
 export const DEFAULT_CLASSIFIER_CONFIG: ClassifierConfig = {
   enabled: true,
-  pairs: [
-    {
-      provider: "openai",
-      stage1: { model: "gpt-5.6-luna", reasoning: "low" },
-      stage2: { model: "gpt-5.6-luna", reasoning: "medium" },
-    },
-    {
-      provider: "google",
-      stage1: { model: "gemini-3.5-flash-lite", reasoning: "minimal" },
-      stage2: { model: "gemini-3.6-flash", reasoning: "low" },
-    },
-    {
-      provider: "openai",
-      stage1: { model: "gpt-5.4-nano", reasoning: "none" },
-      stage2: { model: "gpt-5.4-mini", reasoning: "low" },
-    },
-  ],
-  stage1TimeoutMs: 20_000,
-  stage2TimeoutMs: 30_000,
+  reviewer: {
+    provider: "openai",
+    model: "gpt-5.6-luna",
+    reasoning: "low",
+  },
+  timeoutMs: 30_000,
   maxRetries: 1,
 };
 
@@ -82,9 +69,8 @@ export function defaultPolicyForProjectGitEntry(hasGitEntry: boolean): RawSandbo
 }
 
 const CONFIG_FIELDS = new Set(["enabled", "filesystem", "isolateNetwork", "sshAgent", "sandboxDirectory", "classifier"]);
-const CLASSIFIER_FIELDS = new Set(["enabled", "pairs", "stage1TimeoutMs", "stage2TimeoutMs", "maxRetries"]);
-const PAIR_FIELDS = new Set(["provider", "stage1", "stage2"]);
-const STAGE_FIELDS = new Set(["model", "reasoning"]);
+const CLASSIFIER_FIELDS = new Set(["enabled", "reviewer", "timeoutMs", "maxRetries"]);
+const REVIEWER_FIELDS = new Set(["provider", "model", "reasoning"]);
 const REASONING_LEVELS = new Set<ClassifierReasoning>([
   "none", "off", "minimal", "low", "medium", "high", "xhigh", "max",
 ]);
@@ -157,22 +143,20 @@ export function parseConfigObject(
     }
     const classifier: {
       enabled?: boolean;
-      pairs?: readonly ClassifierPairConfig[];
-      stage1TimeoutMs?: number;
-      stage2TimeoutMs?: number;
+      reviewer?: ClassifierReviewerConfig;
+      timeoutMs?: number;
       maxRetries?: number;
     } = {};
     if (value.classifier.enabled !== undefined) {
       if (typeof value.classifier.enabled !== "boolean") throw sourceError(source, "classifier.enabled must be boolean");
       classifier.enabled = value.classifier.enabled;
     }
-    for (const key of ["stage1TimeoutMs", "stage2TimeoutMs"] as const) {
-      const setting = value.classifier[key];
-      if (setting === undefined) continue;
-      if (!Number.isInteger(setting) || (setting as number) < 1_000 || (setting as number) > 120_000) {
-        throw sourceError(source, `classifier.${key} must be an integer from 1000 through 120000`);
+    if (value.classifier.timeoutMs !== undefined) {
+      const timeoutMs = value.classifier.timeoutMs;
+      if (!Number.isInteger(timeoutMs) || (timeoutMs as number) < 1_000 || (timeoutMs as number) > 120_000) {
+        throw sourceError(source, "classifier.timeoutMs must be an integer from 1000 through 120000");
       }
-      classifier[key] = setting as number;
+      classifier.timeoutMs = timeoutMs as number;
     }
     if (value.classifier.maxRetries !== undefined) {
       const retries = value.classifier.maxRetries;
@@ -181,37 +165,28 @@ export function parseConfigObject(
       }
       classifier.maxRetries = retries as number;
     }
-    if (value.classifier.pairs !== undefined) {
-      if (!Array.isArray(value.classifier.pairs) || value.classifier.pairs.length === 0) {
-        throw sourceError(source, "classifier.pairs must be a non-empty array");
+    if (value.classifier.reviewer !== undefined) {
+      const reviewer = value.classifier.reviewer;
+      if (!isRecord(reviewer)) throw sourceError(source, "classifier.reviewer must be an object");
+      for (const key of Object.keys(reviewer)) {
+        if (!REVIEWER_FIELDS.has(key)) {
+          throw sourceError(source, `unsupported classifier reviewer field ${JSON.stringify(key)}`);
+        }
       }
-      classifier.pairs = value.classifier.pairs.map((pair, pairIndex) => {
-        if (!isRecord(pair)) throw sourceError(source, `classifier.pairs[${pairIndex}] must be an object`);
-        for (const key of Object.keys(pair)) {
-          if (!PAIR_FIELDS.has(key)) throw sourceError(source, `unsupported classifier pair field ${JSON.stringify(key)}`);
-        }
-        if (typeof pair.provider !== "string" || !pair.provider.trim()) {
-          throw sourceError(source, `classifier.pairs[${pairIndex}].provider must be a non-empty string`);
-        }
-        const parseStage = (value: unknown, stage: "stage1" | "stage2") => {
-          if (!isRecord(value)) throw sourceError(source, `classifier.pairs[${pairIndex}].${stage} must be an object`);
-          for (const key of Object.keys(value)) {
-            if (!STAGE_FIELDS.has(key)) throw sourceError(source, `unsupported classifier stage field ${JSON.stringify(key)}`);
-          }
-          if (typeof value.model !== "string" || !value.model.trim()) {
-            throw sourceError(source, `classifier.pairs[${pairIndex}].${stage}.model must be a non-empty string`);
-          }
-          if (typeof value.reasoning !== "string" || !REASONING_LEVELS.has(value.reasoning as ClassifierReasoning)) {
-            throw sourceError(source, `classifier.pairs[${pairIndex}].${stage}.reasoning is not supported`);
-          }
-          return { model: value.model.trim(), reasoning: value.reasoning as ClassifierReasoning };
-        };
-        return {
-          provider: pair.provider.trim(),
-          stage1: parseStage(pair.stage1, "stage1"),
-          stage2: parseStage(pair.stage2, "stage2"),
-        };
-      });
+      if (typeof reviewer.provider !== "string" || !reviewer.provider.trim()) {
+        throw sourceError(source, "classifier.reviewer.provider must be a non-empty string");
+      }
+      if (typeof reviewer.model !== "string" || !reviewer.model.trim()) {
+        throw sourceError(source, "classifier.reviewer.model must be a non-empty string");
+      }
+      if (typeof reviewer.reasoning !== "string" || !REASONING_LEVELS.has(reviewer.reasoning as ClassifierReasoning)) {
+        throw sourceError(source, "classifier.reviewer.reasoning is not supported");
+      }
+      classifier.reviewer = {
+        provider: reviewer.provider.trim(),
+        model: reviewer.model.trim(),
+        reasoning: reviewer.reasoning as ClassifierReasoning,
+      };
     }
     result.classifier = classifier;
   }

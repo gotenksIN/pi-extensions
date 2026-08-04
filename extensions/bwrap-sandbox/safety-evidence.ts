@@ -8,7 +8,10 @@ export interface SafetyAction {
 }
 
 export interface SafetyEvidence {
-  readonly version: 2;
+  readonly version: 3;
+  readonly trustedContext: {
+    readonly activeSandboxDirectory?: string;
+  };
   readonly userMessages: readonly string[];
   readonly omittedUserMessageCount: number;
   readonly completedPriorActions: readonly SafetyAction[];
@@ -22,6 +25,7 @@ export interface EvidenceSource {
   readonly toolName: string;
   readonly input: unknown;
   readonly cwd: string;
+  readonly activeSandboxDirectory?: string;
   readonly omitPriorActions?: boolean;
 }
 
@@ -104,18 +108,24 @@ function collectUserMessages(branch: readonly unknown[]): { messages: string[]; 
     .map(entryMessage)
     .filter((message): message is Record<string, unknown> => !!message)
     .map(userText)
-    .filter((text): text is string => typeof text === "string" && text.length > 0);
-  const selected: string[] = [];
-  let totalBytes = 0;
-  for (let index = all.length - 1; index >= 0 && selected.length < EVIDENCE_LIMITS.userMessages; index -= 1) {
-    const text = boundedText(all[index], EVIDENCE_LIMITS.userMessageBytes);
-    const available = EVIDENCE_LIMITS.userMessagesBytes - totalBytes;
-    if (available <= 0) break;
-    const retained = boundedText(text, available);
-    selected.unshift(retained);
-    totalBytes += byteLength(retained);
+    .filter((text): text is string => typeof text === "string" && text.length > 0)
+    .map((text) => boundedText(text, EVIDENCE_LIMITS.userMessageBytes));
+  const allBytes = all.reduce((total, text) => total + byteLength(text), 0);
+  if (all.length <= EVIDENCE_LIMITS.userMessages && allBytes <= EVIDENCE_LIMITS.userMessagesBytes) {
+    return { messages: all, omitted: 0 };
   }
-  return { messages: selected, omitted: all.length - selected.length };
+  if (all.length === 0) return { messages: [], omitted: 0 };
+
+  const selected = new Set<number>([0, all.length - 1]);
+  let totalBytes = [...selected].reduce((total, index) => total + byteLength(all[index]), 0);
+  for (let index = all.length - 2; index > 0 && selected.size < EVIDENCE_LIMITS.userMessages; index -= 1) {
+    const size = byteLength(all[index]);
+    if (totalBytes + size > EVIDENCE_LIMITS.userMessagesBytes) continue;
+    selected.add(index);
+    totalBytes += size;
+  }
+  const indices = [...selected].sort((left, right) => left - right);
+  return { messages: indices.map((index) => all[index]), omitted: all.length - indices.length };
 }
 
 function collectPriorActions(source: EvidenceSource): { actions: SafetyAction[]; omitted: number } {
@@ -151,8 +161,15 @@ export function buildSafetyEvidence(source: EvidenceSource): { evidence: SafetyE
       return count + (message ? toolCalls(message).filter((call) => call.id !== source.toolCallId).length : 0);
     }, 0) }
     : collectPriorActions(source);
+  const trustedContext = {
+    ...(source.activeSandboxDirectory ? { activeSandboxDirectory: source.activeSandboxDirectory } : {}),
+  };
+  if (byteLength(canonicalJson(trustedContext)) > EVIDENCE_LIMITS.trustedContextBytes) {
+    throw new Error("The trusted safety context is too large for review");
+  }
   const evidence: SafetyEvidence = {
-    version: 2,
+    version: 3,
+    trustedContext,
     userMessages: users.messages,
     omittedUserMessageCount: users.omitted,
     completedPriorActions: prior.actions,

@@ -70,6 +70,21 @@ export function validatePersistentGrantRequest(
   return validatePersistentGrant(grantPath, context, grants, resolver);
 }
 
+/** Validate a transient exact or parent bind source with persistent-grant rules. */
+export function validateOneShotGrantRequest(
+  rawPath: string,
+  scope: GrantScope,
+  context: GrantContext,
+  grants: ApprovedWriteGrants,
+  resolver?: PathResolver,
+): WriteAdmission {
+  const admission = validatePersistentGrantRequest(rawPath, scope, context, grants, resolver);
+  if ((context.inspect ?? inspectPathKind)(admission.path) === "missing") {
+    throw new Error(`One-shot sandbox access requires an existing mount source: ${admission.path}`);
+  }
+  return admission;
+}
+
 /** Validate one direct write without requiring its target to exist. */
 export function validateDirectWrite(
   rawPath: string,

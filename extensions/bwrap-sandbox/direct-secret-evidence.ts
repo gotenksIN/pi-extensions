@@ -68,7 +68,7 @@ const SECRET_TEXT = [
   /\bsk-[A-Za-z0-9_-]{20,}\b/,
   /\b(password|passwd|api[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret)\s*[:=]\s*["']?(?!example|sample|placeholder|changeme|test)[^\s"']{8,}/i,
 ] as const;
-const SECRET_QUERY = /(^|[^a-z])(secrets?|passwords?|passwds?|tokens?|api[_ -]?keys?|credentials?|private[_ -]?keys?|authorization)([^a-z]|$)/i;
+const SECRET_QUERY = /(^|[^a-z])(secrets?|passwords?|passwds?|tokens?|api[_ -]?keys?|credentials?|private[_ -]?keys?)([^a-z]|$)/i;
 const PAYLOAD_SCAN_CHARACTERS = 64 * 1024;
 
 function projectRelative(path: string, projectCwd: string): string | undefined {
@@ -164,7 +164,9 @@ export function buildDirectAccessAssessment(
   };
   const reviewReasons = [
     ...(knownSecretPath ? ["The target matches a known credential or secret path."] : []),
-    ...(secretSeekingQuery ? ["The grep pattern explicitly seeks credentials or secrets."] : []),
+    ...(secretSeekingQuery
+      ? ["The grep pattern, not the target files, contains a high-confidence secret-search term such as password, token, credential, API key, or private key. This check did not scan file content."]
+      : []),
     ...(potentialSecretPayload ? ["The write payload contains a potential credential or secret."] : []),
     ...(toolName === "write" || toolName === "edit") && !payloadScanComplete
       ? ["The write payload is too large for a complete local secret scan."]

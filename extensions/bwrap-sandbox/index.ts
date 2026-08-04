@@ -67,8 +67,12 @@ export default function sandboxExtension(pi: ExtensionAPI) {
     label: "bash (Linux Bubblewrap)",
     async execute(id, params, signal, onUpdate) {
       const cwd = session.projectCwd();
-      if (session.state() === "ready") session.consumeSafetyPermit(id, "bash", params);
-      const baseOperations = session.state() === "ready" ? session.operations() : undefined;
+      const transientWritePaths = session.state() === "ready"
+        ? session.consumeSafetyPermit(id, "bash", params)
+        : [];
+      const baseOperations = session.state() === "ready"
+        ? session.operations(transientWritePaths)
+        : undefined;
       const bash = session.state() === "disabled"
         ? createBashTool(cwd)
         : createBashTool(cwd, {
@@ -88,16 +92,20 @@ export default function sandboxExtension(pi: ExtensionAPI) {
     name: "sandbox_access",
     label: "Sandbox Write Access",
     description:
-      "Request a human-approved exact-path or parent-directory write grant before a known write or after Bubblewrap blocks one. Include bash to classify and approve one exact future Bash call in the same prompt. A grant after a failed approved Bash call can also authorize one exact retry. Use parent scope for create, delete, rename, and move operations. Policy none entries can never be granted.",
-    promptSnippet: "Request a human-approved session write grant before a known write or after a blocked sandbox operation",
+      "Request write access for an explicit path and scope. Session mode asks for a persistent human-approved grant. One-shot mode requires bash and can authorize only that exact future model-generated Bash call from recent user instructions or one human prompt. One-shot access does not create a session grant. Use parent scope for create, delete, rename, and move operations. Policy none entries and protected runtime paths can never be granted.",
+    promptSnippet: "Request a session or one-shot write path before one known model-generated Bash operation",
     promptGuidelines: [
-      "Request access before an operation when its required write path and scope are already known. Include the exact Bash input when the grant is for one known Bash call.",
+      "Request access before an operation when its required write path and scope are already known. Use one-shot mode with the exact Bash input for one known model-generated Bash call.",
       "Use exact scope for content changes to an existing path.",
       "Use parent scope for operations that create, delete, rename, or move a directory entry. Do not grant the exact file first because an exact bind mount cannot be deleted or renamed during that session.",
-      "Do not infer authorization from shell command text. Request only the narrow path and scope that the operation requires.",
+      "Supply path and scope explicitly. Do not infer them from shell or Git commands.",
     ],
     parameters: Type.Object({
       path: Type.String({ description: "Target path, relative to the project or absolute. The target can be missing when scope is parent." }),
+      mode: Type.Optional(Type.Union([
+        Type.Literal("session"),
+        Type.Literal("one-shot"),
+      ], { description: "Create a human-approved session grant, or authorize one exact future Bash call. Default: session." })),
       scope: Type.Optional(Type.Union([
         Type.Literal("exact"),
         Type.Literal("parent"),
@@ -105,10 +113,28 @@ export default function sandboxExtension(pi: ExtensionAPI) {
       bash: Type.Optional(Type.Object({
         command: Type.String({ description: "Exact Bash command that will use this grant." }),
         timeout: Type.Optional(Type.Number({ description: "Exact Bash timeout in seconds, when the later Bash call uses one." })),
-      }, { description: "Classify and approve one exact future Bash call together with this grant." })),
+      }, { description: "Exact future Bash input. Required in one-shot mode. In session mode, it can combine grant and exact-call review." })),
     }),
     async execute(id, params, _signal, _onUpdate, ctx) {
+      const mode = params.mode ?? "session";
       const scope = params.scope ?? "exact";
+      if (mode === "one-shot") {
+        if (!params.scope) throw new Error("sandbox_access mode one-shot requires an explicit scope");
+        if (!params.bash) throw new Error("sandbox_access mode one-shot requires bash input");
+        const result = await session.requestOneShotWrite(
+          params.path,
+          scope,
+          { toolCallId: id, input: params.bash, ctx },
+        );
+        return {
+          content: [{
+            type: "text",
+            text: `Prepared one-shot write access for ${result.path}. Run the exact Bash input next. The path is not a session grant.`,
+          }],
+          details: { path: result.path, mode, scope, authorizedBy: result.authorizedBy },
+        };
+      }
+
       const result = await session.requestPersistentWrite(
         params.path,
         scope,
@@ -123,7 +149,7 @@ export default function sandboxExtension(pi: ExtensionAPI) {
         : `${result.path} is already writable.`;
       return {
         content: [{ type: "text", text }],
-        details: { path: result.path, scope, granted: result.granted, bashApproved: result.bashApproved },
+        details: { path: result.path, mode, scope, granted: result.granted, bashApproved: result.bashApproved },
       };
     },
   });

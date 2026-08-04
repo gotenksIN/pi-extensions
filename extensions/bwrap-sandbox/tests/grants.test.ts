@@ -2,6 +2,7 @@ import {
   addApprovedGrant,
   emptyApprovedGrants,
   validateDirectWrite,
+  validateOneShotGrantRequest,
   validatePersistentGrant,
   validatePersistentGrantRequest,
   type GrantContext,
@@ -124,5 +125,37 @@ test("persistent grants reject missing Bubblewrap bind sources", () => {
   assert.throws(
     () => validatePersistentGrant("new-file", context({}, () => "missing"), emptyApprovedGrants(), missingTarget),
     /existing mount source/,
+  );
+});
+
+test("one-shot exact and parent paths use persistent grant validation", () => {
+  const grants = emptyApprovedGrants();
+  assert.deepEqual(
+    validateOneShotGrantRequest("/work/.git", "exact", context(), grants, existing),
+    { path: "/work/.git", alreadyWritable: false },
+  );
+  assert.deepEqual(
+    validateOneShotGrantRequest("/work/new-file", "parent", context(), grants, missingTarget),
+    { path: "/work", alreadyWritable: false },
+  );
+  assert.throws(
+    () => validateOneShotGrantRequest(
+      "/work/new-file",
+      "exact",
+      context({ "/work": "write" }, () => "missing"),
+      grants,
+      missingTarget,
+    ),
+    /existing mount source/,
+  );
+  assert.throws(
+    () => validateOneShotGrantRequest(
+      "/work/secret",
+      "exact",
+      context({ "/work/secret": "none" }),
+      grants,
+      existing,
+    ),
+    /permanently denies/,
   );
 });

@@ -6,33 +6,26 @@ import { assert, test } from "./harness.ts";
 function config(enabled = true): ClassifierConfig {
   return {
     enabled,
-    pairs: [{
-      provider: "test",
-      stage1: { model: "fast", reasoning: "off" },
-      stage2: { model: "strong", reasoning: "low" },
-    }],
-    stage1TimeoutMs: 1_000,
-    stage2TimeoutMs: 1_000,
+    reviewer: { provider: "test", model: "reviewer", reasoning: "low" },
+    timeoutMs: 1_000,
     maxRetries: 0,
   };
 }
 
-function registry(): ClassifierModelRegistry {
+function registry(onContext?: (context: Record<string, unknown>) => void): ClassifierModelRegistry {
   return {
     find(provider, model) { return { provider, id: model }; },
     getProvider() {
       return {
-        streamSimple(model) {
-          const stage1 = model.id === "fast";
+        streamSimple(_model, context) {
+          onContext?.(context);
           return {
             result: async () => ({
               stopReason: "toolUse",
               content: [{
                 type: "toolCall",
-                name: stage1 ? "record_stage1_decision" : "record_stage2_decision",
-                arguments: stage1
-                  ? { decision: "allow", reason: "Safe." }
-                  : { decision: "allow", severity: "safe", risks: [], reason: "Safe." },
+                name: "record_safety_decision",
+                arguments: { decision: "allow", severity: "safe", risks: [], reason: "Safe." },
               }],
             }),
           };
@@ -71,25 +64,60 @@ test("safety gate creates and consumes one single-use execution permit", async (
   assert.throws(() => gate.consumePermit("call-1", "bash", { command: "ls" }, "/work"), /missing/);
 });
 
-test("proactive classification can approve one exact future Bash call", async () => {
-  const gate = new SafetyGate(config(), registry());
+test("one-shot classification can use a separate envelope and exact future Bash ticket", async () => {
+  const contexts: string[] = [];
+  const gate = new SafetyGate(
+    config(),
+    registry((context) => contexts.push(JSON.stringify(context))),
+    "/home/tester/sandbox",
+  );
   await gate.start();
-  const input = { command: "git commit -m test" };
-  assert.equal((await gate.classify(request(input))).allowed, true);
+  const input = { command: "git commit -m test", timeout: 30 };
+  const authorizationEnvelope = {
+    bash: input,
+    filesystemAccess: {
+      canonicalWritePath: "/work/.git",
+      disposition: "one-shot",
+      scope: "exact",
+    },
+  };
+  const authorization = request(input);
+  const result = await gate.classify({
+    ...authorization,
+    branch: [
+      ...authorization.branch,
+      {
+        type: "message",
+        message: {
+          role: "assistant",
+          content: [{ type: "toolCall", id: "prior", name: "bash", arguments: { command: "prior-action" } }],
+        },
+      },
+    ],
+    evidenceInput: authorizationEnvelope,
+    omitPriorActions: true,
+    requireClassifierReady: true,
+  });
+  assert.equal(result.allowed, true);
+  assert.ok(contexts.every((context) => context.includes("/work/.git")));
+  assert.ok(contexts.every((context) => context.includes("git commit -m test")));
+  assert.ok(contexts.every((context) => context.includes("/home/tester/sandbox")));
+  assert.equal(contexts.some((context) => context.includes("prior-action")), false);
   assert.throws(() => gate.consumePermit("call-1", "bash", input, "/work"), /missing/);
 
-  gate.approveExactBashRetry(input, "/work");
-  assert.equal(gate.authorizeBashRetry("future", input, "/work"), true);
+  gate.createFutureBashTicket(input, "/work");
+  assert.equal(gate.claimFutureBashTicket("future", input, "/work"), true);
   gate.consumePermit("future", "bash", input, "/work");
-  assert.equal(gate.authorizeBashRetry("reused", input, "/work"), false);
+  assert.equal(gate.claimFutureBashTicket("reused", input, "/work"), false);
 });
 
-test("proactive Bash approval rejects changed future input", async () => {
+test("future Bash tickets reject a changed call", async () => {
   const gate = new SafetyGate(config(), registry());
   await gate.start();
-  gate.approveExactBashRetry({ command: "git commit -m test" }, "/work");
-  assert.equal(gate.authorizeBashRetry("changed", { command: "git push" }, "/work"), false);
-  assert.throws(() => gate.consumePermit("changed", "bash", { command: "git push" }, "/work"), /missing/);
+  gate.createFutureBashTicket({ command: "git commit -m test", timeout: 30 }, "/work");
+  const changed = { command: "git commit -m test", timeout: 60 };
+  assert.equal(gate.claimFutureBashTicket("changed", changed, "/work"), false);
+  assert.throws(() => gate.consumePermit("changed", "bash", changed, "/work"), /missing/);
 });
 
 test("failed Bash permits can become one exact retry permit", async () => {
@@ -104,9 +132,9 @@ test("failed Bash permits can become one exact retry permit", async () => {
   assert.ok(pending);
   assert.equal(pending!.command, input.command);
   assert.equal(gate.approvePendingBashRetry(pending!.digest), true);
-  assert.equal(gate.authorizeBashRetry("call-2", input, "/work"), true);
+  assert.equal(gate.claimFutureBashTicket("call-2", input, "/work"), true);
   gate.consumePermit("call-2", "bash", input, "/work");
-  assert.equal(gate.authorizeBashRetry("call-3", input, "/work"), false);
+  assert.equal(gate.claimFutureBashTicket("call-3", input, "/work"), false);
 });
 
 test("Bash retry approval rejects changed input and lifecycle state", async () => {
@@ -116,7 +144,7 @@ test("Bash retry approval rejects changed input and lifecycle state", async () =
   changed.recordBashResult(input, "/work", 1);
   const pending = changed.getPendingBashRetry()!;
   assert.equal(changed.approvePendingBashRetry(pending.digest), true);
-  assert.equal(changed.authorizeBashRetry("changed", { command: "git push" }, "/work"), false);
+  assert.equal(changed.claimFutureBashTicket("changed", { command: "git push" }, "/work"), false);
   assert.throws(() => changed.consumePermit("changed", "bash", { command: "git push" }, "/work"), /missing/);
 
   changed.recordBashResult(input, "/work", 1);
@@ -190,6 +218,7 @@ test("disabled classification still protects owned tool argument integrity", asy
   assert.equal((await gate.start()).state, "disabled");
   assert.equal((await gate.authorize(request())).allowed, true);
   gate.consumePermit("call-1", "bash", { command: "ls" }, "/work");
+  assert.equal((await gate.classify({ ...request(), requireClassifierReady: true })).allowed, false);
 });
 
 test("safety gate blocks oversized actions before provider invocation", async () => {
@@ -208,7 +237,7 @@ test("safety gate blocks oversized actions before provider invocation", async ()
   assert.equal(providerUsed, false);
 });
 
-test("safety gate blocks actions when no complete pair is available", async () => {
+test("safety gate blocks actions when the reviewer is unavailable", async () => {
   const unavailable: ClassifierModelRegistry = {
     find: () => undefined,
     getProvider: () => undefined,
@@ -217,4 +246,5 @@ test("safety gate blocks actions when no complete pair is available", async () =
   const gate = new SafetyGate(config(), unavailable);
   assert.equal((await gate.start()).state, "unavailable");
   assert.equal((await gate.authorize(request())).allowed, false);
+  assert.equal((await gate.classify({ ...request(), requireClassifierReady: true })).allowed, false);
 });

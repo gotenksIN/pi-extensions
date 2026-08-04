@@ -17,6 +17,7 @@ export interface MountPlanInput {
   readonly policy: CompiledFilesystemPolicy;
   readonly grants: ApprovedWriteGrants;
   readonly capabilities: RuntimeCapabilities;
+  readonly transientWritePaths?: readonly string[];
 }
 
 interface PlanNode {
@@ -37,10 +38,12 @@ function sortedNodes(input: MountPlanInput, inspect: InspectPath): PlanNode[] {
   const privateTemp = capabilities.privateTemp.path;
   const ssh = capabilities.sshAgent;
   const sshPath = ssh.disposition === "unavailable" ? undefined : ssh.socket;
-  const writablePaths = [...grants.paths, privateTemp];
+  const transientWritePaths = input.transientWritePaths ?? [];
+  const writablePaths = [...grants.paths, ...transientWritePaths, privateTemp];
   const paths = new Set([
     ...Object.keys(policy),
     ...grants.paths,
+    ...transientWritePaths,
     resources.root,
     privateTemp,
     resources.sshClientConfigDestination,

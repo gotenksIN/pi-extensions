@@ -8,10 +8,11 @@ It gives each Bash process a restricted mount namespace.
 
 The extension also checks Pi file tools in the host process.
 It asks the user before it adds a session write grant.
+It can also attach one validated write path to one exact future model-generated Bash call.
 It uses deterministic local checks for direct content-access calls.
-It can use a two-stage model classifier before model-generated Bash calls.
+It can use one model reviewer before model-generated Bash calls.
 The classifier is an additional Bash check.
-It does not replace Bubblewrap or user approval.
+It does not replace Bubblewrap or deterministic filesystem validation.
 
 ## Security goals
 
@@ -20,13 +21,13 @@ The extension has these goals:
 - Start each Bash process with a read-only view of the host root.
 - Apply a strict filesystem policy to selected paths.
 - Hide paths that have `none` access.
-- Make only approved paths writable.
+- Make only policy paths, session grants, and exact one-shot paths writable.
 - Give each session a private writable temporary directory.
 - Optionally isolate the network.
 - Support one exact inherited SSH agent socket when the user enables it.
 - Check direct Pi file tools before they access the host.
 - Require deterministic human review for direct secret indicators.
-- Check model-generated Bash calls with two independent classifier stages.
+- Check model-generated Bash calls with one independent classifier reviewer.
 - Fail closed when a required security check cannot finish.
 
 The extension is not a confidentiality boundary.
@@ -65,11 +66,18 @@ This is a provenance limit of the Pi extension API.
 
 A model-generated Bash call passes through these controls:
 
-1. Classifier Stage 1 must return a valid `allow` decision.
-2. Classifier Stage 2 must return a valid `allow` decision.
-3. If automatic approval stops, the human can create a single-use approval for the exact call.
-4. Bubblewrap builds the mount plan and starts the Bash process.
-5. If the approved call fails, a later write-grant prompt can also authorize one retry of that exact Bash action.
+1. The configured reviewer must return `allow` with `safe` severity and no risks.
+2. If automatic approval stops, the human can create a single-use approval for the exact call.
+3. Bubblewrap builds the mount plan and starts the Bash process.
+4. If the approved call fails, a later write-grant prompt can also authorize one retry of that exact Bash action.
+
+Before one known Bash call, `sandbox_access` can request `mode: "one-shot"` with an explicit path, scope, and complete Bash input.
+The extension validates the path with the persistent-grant rules.
+It then classifies one envelope that contains the complete Bash input, canonical write path, scope, and one-shot disposition.
+Only recent user-role messages provide authorization evidence for this request.
+One valid safe reviewer decision can authorize it automatically.
+Every result that is not a valid safe allow requires one human decision for that exact path and Bash call.
+The resulting write path is mounted for only the matching next model-generated Bash spawn.
 
 Direct `read`, `grep`, `write`, and `edit` calls use deterministic path policy first.
 They then use local path, query, payload, and scan-completeness indicators.
@@ -83,14 +91,17 @@ For one known Bash action, it can include the exact `bash` input so classificati
 The classifier does not select or create the grant.
 
 Each control is independent.
-Automatic execution of a Bash call requires two classifier `allow` decisions.
+Automatic execution of a Bash call requires one valid `allow` decision with `safe` severity and no risks.
 Automatic execution of a direct content-access call requires a clean and complete local assessment.
 A human review approval is single-use and applies to one exact tool call.
 A failed approved Bash call can become a pending retry only after a later grant prompt displays the exact command and the human selects the combined grant-and-retry choice.
 The retry uses a new single-use execution permit and cannot survive a changed command, working directory, lifecycle, or intervening Bash authorization.
-A classifier decision or human review approval cannot create a mount, grant, or runtime capability.
+A classifier decision cannot select, infer, or widen a filesystem path.
+A valid safe reviewer decision can authorize only the explicit, deterministically validated one-shot path in the same authorization envelope.
+A human one-shot approval has the same path limit.
+Neither result creates a session grant or runtime capability.
 It cannot bypass a Bubblewrap error.
-A user grant cannot override `none` or a protected runtime path.
+A session grant or one-shot path cannot override `none` or a protected runtime path.
 
 User `!` and `!!` Bash commands do not come from a model tool call.
 They do not use the classifier.
@@ -122,10 +133,23 @@ A grant stays active for the current session only.
 A grant does not override an effective `none` rule.
 A grant does not apply to protected runtime resources.
 
+A one-shot write path uses the same canonical source, existing-source, `none`, and protected-runtime validation.
+It stays separate from session grants and does not appear in `/sandbox` status.
+It is bound to one complete Bash input, including its timeout, the project working directory, and the current lifecycle.
+The extension consumes it before one matching spawn.
+Changed input, reuse, or a lifecycle change gives no transient path and returns the call to normal Bash authorization.
+Direct file tools and user Bash cannot claim this path.
+
 ### Grant scope
 
-The `sandbox_access` tool has an `exact` scope and a `parent` scope.
-The default scope is `exact`.
+The `sandbox_access` tool has `session` and `one-shot` modes.
+The default mode is `session`.
+Session mode preserves the human-approved persistent grant flow.
+One-shot mode requires the `bash` field and never creates a persistent grant.
+
+The tool also has an `exact` scope and a `parent` scope.
+The default scope is `exact` in session mode.
+One-shot mode requires an explicit scope.
 Use `exact` to change the content of an existing file or directory.
 The exact path becomes a Bubblewrap bind mount.
 
@@ -168,9 +192,24 @@ Example for one known Bash action that needs a grant:
 ```json
 {
   "path": "/work/.git",
+  "mode": "session",
   "scope": "exact",
   "bash": {
     "command": "git add src/file.ts && git commit -m 'Update file'"
+  }
+}
+```
+
+Example for one exact future Bash call without a session grant:
+
+```json
+{
+  "path": "/work/.git",
+  "mode": "one-shot",
+  "scope": "exact",
+  "bash": {
+    "command": "git add src/file.ts && git commit -m 'Update file'",
+    "timeout": 30
   }
 }
 ```
@@ -185,7 +224,7 @@ The mount plan uses this order:
 2. Create fresh `/dev` and `/proc` mounts.
 3. Install trusted runtime resource masks.
 4. Apply filesystem policy mounts.
-5. Apply approved session write grants.
+5. Apply approved session write grants and the optional consumed one-shot write path.
 6. Apply the private temporary directory and SSH agent capability.
 7. Remount required parent paths as read-only.
 
@@ -264,13 +303,18 @@ Edit scans include every structured replacement block and the legacy single-repl
 All other direct content-access calls run without provider inference.
 The extension creates an exact single-use execution permit before the built-in tool runs.
 Approval prompts list each deterministic trigger.
-An ordinary directory `grep` is not automatically treated as sensitive.
+For a query trigger, the prompt states that the pattern matched a high-confidence secret-search term and that the check did not scan target file content.
+An ordinary directory `grep` or a search for authorization code is not automatically treated as sensitive.
 
 A direct write outside current write policy uses the shared approval channel.
 If safety review and write approval are both required, the extension uses one combined prompt.
 The user can allow one operation or add a session grant.
-A proactive `sandbox_access` call can include one exact future Bash input.
+A proactive `sandbox_access` call in session mode can include one exact future Bash input.
 The extension classifies that input before the grant prompt, and the human can grant the resolved path and authorize that exact Bash call with one choice.
+In one-shot mode, the extension classifies the complete Bash-and-path envelope and creates no session grant.
+A valid automatic decision needs a ready reviewer and one `allow` decision with `safe` severity and no risks.
+Disabled, unavailable, review, invalid, timeout, cancellation, and technical results cannot create automatic filesystem access.
+A human can approve the exact one-shot request with one combined prompt.
 After a failed approved Bash call, the shared grant prompt can offer the same type of combined choice for one exact retry without another classifier request.
 The user can instead grant only the path.
 A subagent cannot approve its own request.
@@ -291,99 +335,75 @@ Read-only local inspection is routine.
 Commands such as `git status`, `git diff`, `git diff --check`, `git diff --stat`, `git log`, `git show`, and `git rev-parse` do not require review only because the repository contains sensitive code or history, or because a later separate action may push.
 Read-only `gh search code`, `gh search commits`, `gh search issues`, `gh search prs`, and `gh search repos` commands are also routine when the complete action has no other risk.
 A search query that contains credentials, project secrets, or proprietary source code still requires review because it transmits that data to GitHub.
+Reads that are restricted to the documented `PI_CODING_AGENT`, `PI_SESSION_ID`, `PI_SESSION_FILE`, `PI_PROVIDER`, `PI_MODEL`, and `PI_REASONING_LEVEL` session metadata are routine.
+This includes exact `env | rg '^PI_'`-style inspection, but it does not include arbitrary environment dumps, provider credential variables, or reading the file named by `PI_SESSION_FILE`.
+Bounded temporary processing of public or local read-only research data in the configured active sandbox directory is also routine when it does not modify project files, external services, credentials, or secrets.
+A read-only research request permits this scratch processing unless it explicitly forbids temporary files.
 The classifier assesses the exact current action.
+It can use recent user-role messages as authorization evidence for a matching, narrowly scoped mutation.
+For example, a user request to commit and push the current changes can authorize an ordinary matching commit and push to the configured upstream.
 A standalone `git fetch origin` is routine.
 A standalone `git pull --ff-only` is routine when it uses the configured upstream or the literal `origin` remote.
 These operations can update local refs and the worktree without requiring review for that effect alone.
-Review remains required for explicit URLs, other remotes, custom refspecs, Git configuration overrides, custom transports, recursive submodule updates, non-fast-forward merges, rebases, and chained commands.
+The latest applicable user instruction controls, and every material effect in a chained command must be authorized.
+Review remains required for secret access or disclosure, unexpected destinations, broad destruction, force pushes and other important history rewriting, privilege escalation, persistence, security weakening, untrusted code execution, evasion, and effects that the user did not authorize.
+Explicit URLs, custom refspecs, Git configuration overrides, custom transports, recursive submodule updates, non-fast-forward merges, and rebases continue to require review.
 An ordinary pull does not receive remote hooks or filter commands by itself.
 The classifier reviews concrete evidence that the proposed action will execute an existing local hook or filter.
-Other Git commands that change files, refs, hooks, remotes, or external services remain subject to the normal review rules.
+Other Git commands that change files, refs, hooks, remotes, or external services require review when recent user authorization does not clearly cover them.
 
 Direct content-access calls do not use the classifier.
 Deterministic path and secret checks can block them without a provider request.
-Direct writes and `sandbox_access` also use user approval when required.
-The classifier checks model-generated Bash only.
-It does not check direct file tools, user Bash, or other extension tools.
+Direct writes and session-mode `sandbox_access` also use user approval when required.
+One-shot `sandbox_access` classifies only the exact future model-generated Bash authorization envelope.
+It does not classify direct file tools or user Bash.
 
-### Default model pairs
+### Default reviewer
 
-The extension uses an ordered list of complete pairs.
-Each pair uses one provider for both stages.
+The default automatic reviewer is `openai/gpt-5.6-luna` with `low` reasoning.
+The extension makes one reviewer request for each classified action.
+It does not use a second model or a fallback model.
 
-The first default pair is OpenAI Luna:
-
-- Stage 1: `openai/gpt-5.6-luna` with `low` reasoning.
-- Stage 2: `openai/gpt-5.6-luna` with `medium` reasoning.
-
-The second default pair is Google:
-
-- Stage 1: `google/gemini-3.5-flash-lite` with `minimal` reasoning.
-- Stage 2: `google/gemini-3.6-flash` with `low` reasoning.
-
-The third default pair is OpenAI 5.4:
-
-- Stage 1: `openai/gpt-5.4-nano` with `none` reasoning.
-- Stage 2: `openai/gpt-5.4-mini` with `low` reasoning.
-
-OpenAI Luna is the preferred default.
-Google is the first technical fallback.
-OpenAI 5.4 is the second technical fallback.
-The extension does not combine stages from different pairs.
-
-### Custom model pairs
-
-The default pairs are recommendations.
-They are not an allowlist.
-A user can replace them in global configuration.
-Each custom pair must specify one provider, two model IDs, and two reasoning levels.
-The models must exist in the Pi model registry.
-The provider must support the configured reasoning levels.
+A user can replace the reviewer in global configuration.
+The custom reviewer must specify one provider, one model ID, and one reasoning level.
+The model must exist in the Pi model registry, and the provider must support the configured reasoning level.
 
 The extension uses Pi authentication and Pi provider transports.
 It does not store API keys.
 It does not read provider credentials directly.
-It does not add Google or OpenAI SDKs.
+It does not add provider SDKs.
 
 Project configuration cannot set classifier options.
 Repository content must not select the security reviewer.
 
-### Pair selection and fallback
+### Availability and failure
 
-At startup, the extension checks the model registry and authentication state.
+At startup, the extension checks the configured model, provider runtime, and authentication state.
 This check does not make an inference request.
-The first complete available pair becomes the preferred pair.
 
-If no complete pair is available, Bubblewrap still starts.
-The extension shows a warning.
-The warning tells the user to configure a complete pair.
-When the classifier is unavailable, model-generated Bash calls require human review.
+If the reviewer is unavailable, Bubblewrap still starts.
+The extension shows a warning and tells the user that model-generated Bash calls require human review.
+The warning also tells the user that they can configure `classifier.reviewer` in the global sandbox configuration.
 Deterministic direct-tool checks continue without provider access.
 User Bash and `/sandbox-test` continue to use Bubblewrap.
 
-The extension resolves availability again for each action.
-It starts with the first available configured pair.
-
-A pair succeeds only when both stages return valid `allow` decisions.
-A valid `review` stops automatic approval.
-Invalid output, refusal, timeout, or exhausted technical failure also stops automatic approval.
-These results open the shared human review prompt for the exact classified call.
-Cancellation blocks the call without a new prompt.
-
-A technical provider or model failure can cause fallback to the next pair.
-The next pair always starts at Stage 1.
-The extension discards a partial approval from the failed pair.
-If all pairs fail, the call requires human review.
+The extension resolves the configured reviewer again for each action.
+A valid `review`, invalid output, refusal, timeout, missing model, missing provider, missing authentication, or technical call failure stops automatic approval.
+There is no model fallback.
+Unavailable and technical-failure prompts state that the automatic reviewer is unavailable and that the user can configure `classifier.reviewer` globally.
+Other blocked results show a normalized reason or the validated concise decision reason.
 A human allow creates one single-use exact-call permit.
 It does not create a filesystem grant.
 A human denial blocks the call.
+Cancellation blocks the call.
 
 ### Evidence
 
 Classifier evidence is bounded.
 Bash evidence can contain:
 
-- Recent user-role text messages from the active branch.
+- Up to eight bounded user-role text messages from the active branch, in branch order.
+- The compiled active sandbox directory as bounded trusted context, when it exists.
 - The current tool name.
 - The complete current structured input.
 - The project working directory.
@@ -403,8 +423,14 @@ The classifier uses them only when the proposed action explicitly executes or de
 The evidence does not contain tool-result content.
 The extension does not read a referenced script for classification.
 It does not treat assistant text or completed prior actions as authorization.
+Only a clear recent user-role message can authorize a mutation.
+A later restriction or cancellation overrides an earlier request.
+A user message with an omission marker is incomplete and cannot supply authorization.
 
-The extension can omit old history with an explicit marker.
+If all bounded user messages fit, the extension keeps all of them.
+Otherwise, it keeps the first and latest messages, then adds the newest interior messages that fit, and outputs them in branch order.
+It records the number of omitted messages.
+Per-message truncation uses an explicit omission marker.
 It does not silently truncate the current action.
 An action that is too large or cannot be serialized is blocked locally.
 
@@ -418,29 +444,33 @@ Filename and payload indicators reduce risk but do not provide a complete conten
 
 ### Decisions
 
-Stage 1 returns `allow` or `review` with a short reason.
-Stage 2 returns the decision, severity, risk categories, and a short reason.
+The reviewer returns one structured decision with `decision`, `severity`, `risks`, and a short `reason`.
+Automatic approval requires `decision: "allow"`, `severity: "safe"`, and an empty risk list.
 The extension validates all fields locally.
 It rejects unknown fields, multiple decisions, prose in place of a decision, contradictory allows, and incomplete output.
 
 The extension does not execute classifier tool calls.
 It does not store classifier reasoning.
-A human review prompt shows the validated, bounded reason for a semantic Stage 1 or Stage 2 decision.
-Technical failures use normalized local text.
-Diagnostics contain only provider and model labels, stage numbers, and normalized outcome categories.
+A human review prompt shows the validated, bounded reason for a semantic decision.
+Technical failures use normalized local text and global `classifier.reviewer` guidance.
+Diagnostics contain only the provider and model label and a normalized outcome category.
 Status does not retain decision reasons.
 
 ### Execution permits
 
 The `tool_call` input is mutable.
 A later extension can change it after this extension checks it.
-For extension-owned Bash, the extension creates a single-use permit after two classifier allows or one explicit human review approval.
+For extension-owned Bash, the extension creates a single-use permit after one valid safe reviewer decision or one explicit human review approval.
 For extension-owned `read`, `grep`, `write`, and `edit`, it creates a single-use permit after a clean deterministic assessment or one explicit human review approval.
 The extension wraps these built-in tools so approval and execution have the same integrity check.
 The permit covers the tool call ID, tool name, final input, working directory, and lifecycle generation.
 The tool consumes the permit immediately before execution.
-A proactive write-grant request can classify one exact future Bash input without creating an execution permit or filesystem grant.
+A proactive session write-grant request can classify one exact future Bash input without creating an execution permit or filesystem grant.
 A combined human approval creates the validated grant and one exact future-call ticket.
+A one-shot request creates two independent transient records after one valid safe reviewer decision or one human approval: an exact future Bash ticket and a validated write-path record.
+The matching tool call claims both records.
+Permit consumption returns that path only to the Bubblewrap operations object for that one spawn.
+The path is consumed before execution and is never added to session grants or status.
 A failed Bash execution can also stage bounded retry metadata for the next write-grant request.
 A combined human grant-and-retry choice converts that metadata into one permit for a new tool call only when the command and working directory still match exactly.
 A missing, changed, expired, or reused permit fails closed.
@@ -479,34 +509,30 @@ Example global configuration:
   },
   "classifier": {
     "enabled": true,
-    "stage1TimeoutMs": 20000,
-    "stage2TimeoutMs": 30000,
+    "reviewer": {
+      "provider": "openai",
+      "model": "gpt-5.6-luna",
+      "reasoning": "low"
+    },
+    "timeoutMs": 30000,
     "maxRetries": 1
   }
 }
 ```
 
-Omit `classifier.pairs` to use the default pairs.
-A configured list replaces the defaults.
+Omit `classifier.reviewer` to use the default Luna reviewer.
+A configured reviewer replaces that default.
 
-Example custom pair:
+Example custom reviewer:
 
 ```json
 {
   "classifier": {
-    "pairs": [
-      {
-        "provider": "custom-provider",
-        "stage1": {
-          "model": "fast-model",
-          "reasoning": "minimal"
-        },
-        "stage2": {
-          "model": "strong-model",
-          "reasoning": "high"
-        }
-      }
-    ]
+    "reviewer": {
+      "provider": "custom-provider",
+      "model": "reviewer-model",
+      "reasoning": "high"
+    }
   }
 }
 ```
@@ -543,20 +569,22 @@ Use `/sandbox` to show:
 - Private temporary directory.
 - Configured sandbox directory and its active or missing state.
 - Session write grants.
-- Classifier state and selected pair.
+- Classifier state and configured reviewer.
 - Sanitized classifier diagnostics.
 
 Use `/sandbox-test` as the single test command.
 It first runs the Pi-native unit tests.
 It then runs the shell integration test through the active runtime.
 The default command does not make classifier inference requests.
-Use `/sandbox-test live` to add the live provider compatibility matrix.
+Use `/sandbox-test live` to add the live reviewer compatibility check.
+An optional Bun syntax build can write generated output to `$HOME/sandbox/bwrap-build`; this does not replace `/sandbox-test`.
 
-The live matrix uses the configured classifier pairs and Pi model resolution, authentication, and provider transports.
-It skips a pair that does not have both models and Pi authentication.
-For each complete pair, it classifies a routine `git status` action through both stages and a synthetic credential-exfiltration action through Stage 1.
-This makes three inference requests for each complete configured pair.
-It checks structured-tool compatibility and requires the safe action to be allowed and the risky action to require review.
+The live check uses only the configured reviewer with Pi model resolution, authentication, and provider transport.
+It makes two requests.
+It requires an explicitly authorized ordinary commit-and-push action to return a safe allow.
+It requires a synthetic credential-exfiltration action to return review.
+An unavailable reviewer, technical failure, invalid output, timeout, or behavior mismatch fails the live check.
+It does not try another model.
 Other unit tests use injected provider implementations for deterministic isolation.
 
 The integration test checks the real mount namespace.
@@ -571,7 +599,7 @@ A live containment claim requires a successful integration test on the target sy
 - `types.ts` defines policy, grant, capability, classifier, and status types.
 - `policy.ts` resolves paths and compiles filesystem policy.
 - `layout.ts` defines fixed host and namespace paths.
-- `grants.ts` validates and creates human-approved write grants.
+- `grants.ts` validates persistent grants and one-shot bind sources, and it creates human-approved session grants.
 - `capabilities.ts` creates private-temp and SSH agent capabilities.
 - `mount-plan.ts` creates deterministic mount operations.
 - `runtime.ts` owns trusted resources and Bubblewrap processes.
@@ -580,11 +608,11 @@ A live containment claim requires a successful integration test on the target sy
 - `direct-gate.ts` identifies direct host filesystem tools.
 - `safety-policy.ts` owns classifier prompts, schemas, and fixed limits.
 - `safety-evidence.ts` owns bounded evidence and action digests.
-- `classifier-provider.ts` owns Pi-native stage invocation.
-- `classifier.ts` owns pair selection and the fallback state machine.
+- `classifier-provider.ts` owns Pi-native reviewer invocation.
+- `classifier.ts` owns reviewer availability and decision state.
 - `direct-secret-evidence.ts` owns deterministic direct-tool metadata, secret indicators, and review reasons.
-- `safety-gate.ts` owns Bash classification and single-use permits.
-- `session.ts` composes lifecycle, grants, runtime, and the safety gate.
+- `safety-gate.ts` owns Bash classification, exact future tickets, and single-use permits.
+- `session.ts` owns transient one-shot write records and composes lifecycle, grants, runtime, and the safety gate.
 - `commands.ts` presents status and the native test command.
 - `index.ts` registers Pi surfaces and delegates work.
 
@@ -603,7 +631,7 @@ Before a security change, answer these questions:
 - Which environment values depend on the same runtime capability?
 - Which configuration scope can set the option?
 - What happens when configuration or runtime state is invalid?
-- Can a classifier fallback change a valid review decision?
+- Does every unavailable reviewer path fail closed without model fallback?
 - Can evidence or diagnostics disclose a secret?
 - Which native unit tests prove each branch?
 - Which integration check proves actual Bubblewrap behavior?
@@ -616,8 +644,8 @@ Do not add these designs:
 - Shell or Git parsing to decide mounts.
 - Command regex allowlists.
 - Classifier-created grants, mounts, or capabilities.
-- Mixed-provider approvals inside one pair.
-- Provider fallback after a valid `review`.
+- Multiple reviewer conjunctions.
+- Classifier model fallback.
 - Direct provider credential management.
 - Raw evidence or provider-response logging.
 - Repository-file ingestion for classifier evidence.

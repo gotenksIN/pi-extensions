@@ -133,7 +133,10 @@ sudo dnf install bubblewrap
 sudo pacman -S bubblewrap
 ```
 
-The extension starts from a read-only host root and uses deterministic path and direct secret checks, Bubblewrap mounts, user-approved session grants, and a two-stage classifier for model-generated Bash.
+The extension starts from a read-only host root and uses deterministic path and direct secret checks, Bubblewrap mounts, user-approved session grants, exact one-shot write paths, and one classifier reviewer for model-generated Bash.
+The default reviewer is `openai/gpt-5.6-luna` with `low` reasoning.
+The reviewer can use bounded user-role instructions to authorize matching, narrowly scoped Bash mutations and one deterministically validated write path for one exact future Bash call.
+A missing or failed reviewer does not use model fallback and sends the exact action to human review.
 Bubblewrap is the primary security boundary.
 Read its [user guide](extensions/bwrap-sandbox/README.md) before you configure it.
 
@@ -142,6 +145,26 @@ The extension's global configuration is:
 ```text
 ~/.pi/agent/extensions/sandbox.json
 ```
+
+The default classifier configuration is equivalent to:
+
+```json
+{
+  "classifier": {
+    "reviewer": {
+      "provider": "openai",
+      "model": "gpt-5.6-luna",
+      "reasoning": "low"
+    },
+    "timeoutMs": 30000,
+    "maxRetries": 1
+  }
+}
+```
+
+Only global configuration can replace `classifier.reviewer`.
+If the model, provider, authentication, or provider call is unavailable, the extension uses human review and tells the user that they can configure `classifier.reviewer` globally.
+It does not use a fallback model.
 
 Trusted project configuration is:
 

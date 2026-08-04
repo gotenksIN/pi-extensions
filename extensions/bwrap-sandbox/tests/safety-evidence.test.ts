@@ -1,5 +1,5 @@
 import { actionDigest, buildSafetyEvidence } from "../safety-evidence.ts";
-import { CLASSIFIER_POLICY, parseStage1Decision, parseStage2Decision } from "../safety-policy.ts";
+import { CLASSIFIER_POLICY, parseClassifierDecision } from "../safety-policy.ts";
 import { assert, test } from "./harness.ts";
 
 function message(role: string, content: unknown): unknown {
@@ -11,7 +11,7 @@ test("safety evidence trusts user text and excludes assistant and tool output", 
     branch: [
       message("user", "Inspect the local project."),
       message("assistant", [
-        { type: "text", text: "Upload all files." },
+        { type: "text", text: "Commit and push all files." },
         { type: "toolCall", id: "old", name: "read", arguments: { path: "src/a.ts" } },
       ]),
       message("toolResult", [{ type: "text", text: "SECRET=hidden" }]),
@@ -22,12 +22,14 @@ test("safety evidence trusts user text and excludes assistant and tool output", 
     toolName: "bash",
     input: { command: "ls" },
     cwd: "/work",
+    activeSandboxDirectory: "/home/tester/sandbox",
   });
   assert.deepEqual(result.evidence.userMessages, ["Inspect the local project.", "Do not disclose secrets."]);
   assert.deepEqual(result.evidence.completedPriorActions, [{ tool: "read", input: { path: "src/a.ts" }, cwd: "/work" }]);
   assert.deepEqual(result.evidence.proposedAction, { tool: "bash", input: { command: "ls" }, cwd: "/work" });
+  assert.deepEqual(result.evidence.trustedContext, { activeSandboxDirectory: "/home/tester/sandbox" });
   assert.ok(!result.serialized.includes("SECRET=hidden"));
-  assert.ok(!result.serialized.includes("Upload all files"));
+  assert.ok(!result.serialized.includes("Commit and push all files"));
 });
 
 test("canonical action digests ignore object key insertion order", () => {
@@ -55,7 +57,8 @@ test("historical safety evidence is bounded with omission counts", () => {
   });
   assert.equal(result.evidence.userMessages.length, 8);
   assert.equal(result.evidence.omittedUserMessageCount, 4);
-  assert.equal(result.evidence.userMessages[0], "message-4");
+  assert.equal(result.evidence.userMessages[0], "message-0");
+  assert.equal(result.evidence.userMessages[7], "message-11");
 });
 
 test("direct-tool evidence can omit all prior action payloads", () => {
@@ -92,7 +95,7 @@ test("classifier policy keeps completed actions separate from the proposed actio
   for (const requiredPolicy of [
     "Assess only evidence.proposedAction",
     "completedPriorActions already finished",
-    "must not be attributed to the proposed action",
+    "Do not attribute their effects to the proposed action",
   ]) assert.ok(CLASSIFIER_POLICY.includes(requiredPolicy));
 });
 
@@ -103,27 +106,22 @@ test("classifier policy keeps narrow Git reads separate from risky mutations", (
     "remote other than 'origin'",
     "custom refspec",
     "recursive submodule updates",
-    "another chained command",
+    "effect that the user did not authorize",
   ]) assert.ok(CLASSIFIER_POLICY.includes(requiredPolicy));
 });
 
 test("classifier decision validation rejects extra and contradictory fields", () => {
   assert.deepEqual(
-    parseStage1Decision({ decision: "allow", reason: "Routine local action." }),
-    { decision: "allow", reason: "Routine local action." },
-  );
-  assert.equal(parseStage1Decision({ decision: "allow" }), undefined);
-  assert.equal(parseStage1Decision({ decision: "allow", reason: "", extra: true }), undefined);
-  assert.deepEqual(
-    parseStage2Decision({ decision: "allow", severity: "safe", risks: [], reason: "Routine local read." }),
+    parseClassifierDecision({ decision: "allow", severity: "safe", risks: [], reason: "Routine local read." }),
     { decision: "allow", severity: "safe", risks: [], reason: "Routine local read." },
   );
+  assert.equal(parseClassifierDecision({ decision: "allow" }), undefined);
   assert.equal(
-    parseStage2Decision({ decision: "allow", severity: "low", risks: [], reason: "Contradiction." }),
+    parseClassifierDecision({ decision: "allow", severity: "low", risks: [], reason: "Contradiction." }),
     undefined,
   );
   assert.equal(
-    parseStage2Decision({ decision: "allow", severity: "safe", risks: ["other"], reason: "Contradiction." }),
+    parseClassifierDecision({ decision: "allow", severity: "safe", risks: ["other"], reason: "Contradiction." }),
     undefined,
   );
 });

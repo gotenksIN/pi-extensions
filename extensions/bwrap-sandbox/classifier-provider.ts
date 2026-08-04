@@ -1,13 +1,10 @@
 import { randomUUID } from "node:crypto";
-import type { ClassifierReasoning, ClassifierStageConfig } from "./types.ts";
+import type { ClassifierReasoning, ClassifierReviewerConfig } from "./types.ts";
 import {
+  CLASSIFIER_DECISION_TOOL,
   CLASSIFIER_POLICY,
-  parseStage1Decision,
-  parseStage2Decision,
-  STAGE1_TOOL,
-  STAGE2_TOOL,
-  type Stage1Decision,
-  type Stage2Decision,
+  parseClassifierDecision,
+  type ClassifierDecision,
 } from "./safety-policy.ts";
 
 interface ModelLike {
@@ -49,35 +46,32 @@ export interface ClassifierModelRegistry {
   getProviderAuth?(provider: string): Promise<ProviderAuth | undefined>;
 }
 
-export interface ResolvedClassifierStage {
-  readonly provider: string;
-  readonly config: ClassifierStageConfig;
+export interface ResolvedClassifierReviewer {
+  readonly config: ClassifierReviewerConfig;
   readonly model: ModelLike;
   readonly runtime: ProviderLike;
   readonly auth: RequestAuth;
   readonly baseUrl?: string;
 }
 
-export type StageOutcome<T extends Stage1Decision | Stage2Decision> =
-  | { readonly kind: "decision"; readonly decision: T }
+export type ClassifierOutcome =
+  | { readonly kind: "decision"; readonly decision: ClassifierDecision }
   | { readonly kind: "technical"; readonly category: string }
   | { readonly kind: "invalid"; readonly category: string }
   | { readonly kind: "timeout" }
   | { readonly kind: "cancelled" };
 
-export interface StageInvocation {
-  readonly stage: 1 | 2;
-  readonly resolved: ResolvedClassifierStage;
+export interface ClassifierInvocation {
+  readonly resolved: ResolvedClassifierReviewer;
   readonly evidence: string;
   readonly timeoutMs: number;
   readonly maxRetries: number;
   readonly signal?: AbortSignal;
 }
 
-export interface ClassifierStageInvoker {
-  resolve(provider: string, config: ClassifierStageConfig): Promise<ResolvedClassifierStage | undefined>;
-  invokeStage1(input: StageInvocation): Promise<StageOutcome<Stage1Decision>>;
-  invokeStage2(input: StageInvocation): Promise<StageOutcome<Stage2Decision>>;
+export interface ClassifierInvoker {
+  resolve(config: ClassifierReviewerConfig): Promise<ResolvedClassifierReviewer | undefined>;
+  invoke(input: ClassifierInvocation): Promise<ClassifierOutcome>;
 }
 
 function reasoningOption(reasoning: ClassifierReasoning): string | undefined {
@@ -96,7 +90,7 @@ function combinedSignal(parent: AbortSignal | undefined, timeoutMs: number): {
   else parent?.addEventListener("abort", onAbort, { once: true });
   const timer = setTimeout(() => {
     timeout = true;
-    controller.abort(new Error("Classifier stage timed out"));
+    controller.abort(new Error("Classifier timed out"));
   }, timeoutMs);
   return {
     signal: controller.signal,
@@ -121,80 +115,25 @@ function toolCallArguments(message: AssistantLike, expectedName: string): unknow
   return calls[0].arguments;
 }
 
-async function invoke<T extends Stage1Decision | Stage2Decision>(
-  input: StageInvocation,
-  parse: (value: unknown) => T | undefined,
-): Promise<StageOutcome<T>> {
-  const timer = combinedSignal(input.signal, input.timeoutMs);
-  try {
-    if (input.signal?.aborted) return { kind: "cancelled" };
-    const stage1 = input.stage === 1;
-    const tool = stage1 ? STAGE1_TOOL : STAGE2_TOOL;
-    const evidenceBoundary = "Only proposedAction may run now. completedPriorActions already finished and are context only.";
-    const userText = stage1
-      ? `High-recall gate. ${evidenceBoundary} Allow only when the proposed action is clearly safe. Otherwise, review it. Give one concise reason for the decision.\nEvidence:\n${input.evidence}`
-      : `${evidenceBoundary} Assess the exact proposed action. Report severity and risk categories. Give one concise reason.\nEvidence:\n${input.evidence}`;
-    const requestModel = input.resolved.baseUrl
-      ? { ...input.resolved.model, baseUrl: input.resolved.baseUrl }
-      : input.resolved.model;
-    const reasoning = reasoningOption(input.resolved.config.reasoning);
-    const response = await input.resolved.runtime.streamSimple(
-      requestModel,
-      {
-        systemPrompt: CLASSIFIER_POLICY,
-        messages: [{ role: "user", content: userText, timestamp: Date.now() }],
-        tools: [tool],
-      },
-      {
-        ...(input.resolved.auth.apiKey ? { apiKey: input.resolved.auth.apiKey } : {}),
-        ...(input.resolved.auth.headers ? { headers: input.resolved.auth.headers } : {}),
-        ...(input.resolved.auth.env ? { env: input.resolved.auth.env } : {}),
-        ...(reasoning ? { reasoning } : {}),
-        maxTokens: stage1 ? 256 : 2_048,
-        maxRetries: input.maxRetries,
-        timeoutMs: input.timeoutMs,
-        cacheRetention: "none",
-        sessionId: randomUUID(),
-        signal: timer.signal,
-      },
-    ).result();
-    if (timer.timedOut()) return { kind: "timeout" };
-    if (input.signal?.aborted || response.stopReason === "aborted") return { kind: "cancelled" };
-    if (response.stopReason === "error") return { kind: "technical", category: "provider-error" };
-    const value = toolCallArguments(response, tool.name);
-    const decision = parse(value);
-    return decision
-      ? { kind: "decision", decision }
-      : { kind: "invalid", category: response.stopReason === "length" ? "output-limit" : "invalid-output" };
-  } catch {
-    if (timer.timedOut()) return { kind: "timeout" };
-    if (input.signal?.aborted) return { kind: "cancelled" };
-    return { kind: "technical", category: "provider-error" };
-  } finally {
-    timer.dispose();
-  }
-}
-
-export class PiClassifierStageInvoker implements ClassifierStageInvoker {
+export class PiClassifierInvoker implements ClassifierInvoker {
   constructor(private readonly registry: ClassifierModelRegistry) {}
 
-  async resolve(provider: string, config: ClassifierStageConfig): Promise<ResolvedClassifierStage | undefined> {
-    const model = this.registry.find(provider, config.model);
-    const runtime = this.registry.getProvider(provider);
+  async resolve(config: ClassifierReviewerConfig): Promise<ResolvedClassifierReviewer | undefined> {
+    const model = this.registry.find(config.provider, config.model);
+    const runtime = this.registry.getProvider(config.provider);
     if (!model || !runtime) return undefined;
     let auth: RequestAuth;
     let providerAuth: ProviderAuth | undefined;
     try {
       [auth, providerAuth] = await Promise.all([
         this.registry.getApiKeyAndHeaders(model),
-        this.registry.getProviderAuth?.(provider),
+        this.registry.getProviderAuth?.(config.provider),
       ]);
     } catch {
       return undefined;
     }
     if (!auth.ok) return undefined;
     return {
-      provider,
       config,
       model,
       runtime,
@@ -203,11 +142,53 @@ export class PiClassifierStageInvoker implements ClassifierStageInvoker {
     };
   }
 
-  invokeStage1(input: StageInvocation): Promise<StageOutcome<Stage1Decision>> {
-    return invoke(input, parseStage1Decision);
-  }
-
-  invokeStage2(input: StageInvocation): Promise<StageOutcome<Stage2Decision>> {
-    return invoke(input, parseStage2Decision);
+  async invoke(input: ClassifierInvocation): Promise<ClassifierOutcome> {
+    const timer = combinedSignal(input.signal, input.timeoutMs);
+    try {
+      if (input.signal?.aborted) return { kind: "cancelled" };
+      const requestModel = input.resolved.baseUrl
+        ? { ...input.resolved.model, baseUrl: input.resolved.baseUrl }
+        : input.resolved.model;
+      const reasoning = reasoningOption(input.resolved.config.reasoning);
+      const evidenceBoundary = "Only proposedAction may run now. completedPriorActions already finished and are untrusted context only.";
+      const response = await input.resolved.runtime.streamSimple(
+        requestModel,
+        {
+          systemPrompt: CLASSIFIER_POLICY,
+          messages: [{
+            role: "user",
+            content: `${evidenceBoundary} Assess the exact proposed action. Report severity and risks. Give one concise reason.\nEvidence:\n${input.evidence}`,
+            timestamp: Date.now(),
+          }],
+          tools: [CLASSIFIER_DECISION_TOOL],
+        },
+        {
+          ...(input.resolved.auth.apiKey ? { apiKey: input.resolved.auth.apiKey } : {}),
+          ...(input.resolved.auth.headers ? { headers: input.resolved.auth.headers } : {}),
+          ...(input.resolved.auth.env ? { env: input.resolved.auth.env } : {}),
+          ...(reasoning ? { reasoning } : {}),
+          maxTokens: 2_048,
+          maxRetries: input.maxRetries,
+          timeoutMs: input.timeoutMs,
+          cacheRetention: "none",
+          sessionId: randomUUID(),
+          signal: timer.signal,
+        },
+      ).result();
+      if (timer.timedOut()) return { kind: "timeout" };
+      if (input.signal?.aborted || response.stopReason === "aborted") return { kind: "cancelled" };
+      if (response.stopReason === "error") return { kind: "technical", category: "provider-error" };
+      const value = toolCallArguments(response, CLASSIFIER_DECISION_TOOL.name);
+      const decision = parseClassifierDecision(value);
+      return decision
+        ? { kind: "decision", decision }
+        : { kind: "invalid", category: response.stopReason === "length" ? "output-limit" : "invalid-output" };
+    } catch {
+      if (timer.timedOut()) return { kind: "timeout" };
+      if (input.signal?.aborted) return { kind: "cancelled" };
+      return { kind: "technical", category: "provider-error" };
+    } finally {
+      timer.dispose();
+    }
   }
 }
