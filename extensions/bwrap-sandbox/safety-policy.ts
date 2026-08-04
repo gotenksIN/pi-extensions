@@ -90,7 +90,6 @@ export const STAGE1_TOOL = {
     required: ["decision", "reason"],
     additionalProperties: false,
   },
-  constrainedSampling: { type: "json_schema", strict: "prefer" } as const,
 };
 
 export const STAGE2_TOOL = {
@@ -107,7 +106,6 @@ export const STAGE2_TOOL = {
     required: ["decision", "severity", "risks", "reason"],
     additionalProperties: false,
   },
-  constrainedSampling: { type: "json_schema", strict: "prefer" } as const,
 };
 
 const DECISIONS = new Set<SafetyDecision>(["allow", "review"]);

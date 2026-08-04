@@ -1,8 +1,11 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ClassifierModelRegistry } from "./classifier-provider.ts";
 import type { ManualTestExecution, SessionStatusSnapshot } from "./session.ts";
+import type { ClassifierConfig } from "./types.ts";
 
 export interface CommandSession {
   status(): SessionStatusSnapshot;
+  classifierTestConfig(): ClassifierConfig | undefined;
   manualTestExecution(): ManualTestExecution;
 }
 
@@ -60,11 +63,26 @@ export function registerSandboxCommands(pi: ExtensionAPI, session: CommandSessio
   });
 
   pi.registerCommand("sandbox-test", {
-    description: "Run sandbox unit and Linux Bubblewrap integration tests",
-    handler: async (_args, ctx) => {
+    description: "Run sandbox tests; add 'live' for provider compatibility",
+    handler: async (args, ctx) => {
+      const mode = args.trim();
+      if (mode && mode !== "live") {
+        ctx.ui.notify("Usage: /sandbox-test [live]", "error");
+        return;
+      }
       try {
         const { runSandboxTestCommand } = await import("./tests/command.ts");
-        const result = await runSandboxTestCommand(session.manualTestExecution());
+        const config = session.classifierTestConfig();
+        if (mode === "live" && !config) {
+          ctx.ui.notify("Live classifier tests cannot run because classifier configuration is unavailable.", "error");
+          return;
+        }
+        const result = await runSandboxTestCommand(
+          session.manualTestExecution(),
+          mode === "live"
+            ? { liveClassifier: { registry: ctx.modelRegistry as unknown as ClassifierModelRegistry, config: config! } }
+            : {},
+        );
         ctx.ui.notify(result.summary, result.failed ? "error" : "info");
       } catch (error) {
         const detail = error instanceof Error ? error.stack ?? error.message : String(error);

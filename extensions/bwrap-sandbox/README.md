@@ -95,8 +95,8 @@ A user grant cannot override `none` or a protected runtime path.
 User `!` and `!!` Bash commands do not come from a model tool call.
 They do not use the classifier.
 They still run through Bubblewrap.
-The `/sandbox-test` command also bypasses classifier inference.
-This prevents paid calls during tests.
+The `/sandbox-test` command also bypasses classifier inference for its shell containment checks.
+Explicit provider compatibility tests can still call a live model through Pi.
 
 Starting Pi with `--no-sandbox` disables this extension for the parent session and all subagent sessions in the same Pi process.
 Subagents do not receive a separate active sandbox when the parent explicitly selected this CLI opt-out.
@@ -311,18 +311,24 @@ It does not check direct file tools, user Bash, or other extension tools.
 The extension uses an ordered list of complete pairs.
 Each pair uses one provider for both stages.
 
-The first default pair is Google:
+The first default pair is OpenAI Luna:
+
+- Stage 1: `openai/gpt-5.6-luna` with `low` reasoning.
+- Stage 2: `openai/gpt-5.6-luna` with `medium` reasoning.
+
+The second default pair is Google:
 
 - Stage 1: `google/gemini-3.5-flash-lite` with `minimal` reasoning.
 - Stage 2: `google/gemini-3.6-flash` with `low` reasoning.
 
-The second default pair is OpenAI:
+The third default pair is OpenAI 5.4:
 
 - Stage 1: `openai/gpt-5.4-nano` with `none` reasoning.
 - Stage 2: `openai/gpt-5.4-mini` with `low` reasoning.
 
-Google is the preferred default.
-OpenAI is the default technical fallback.
+OpenAI Luna is the preferred default.
+Google is the first technical fallback.
+OpenAI 5.4 is the second technical fallback.
 The extension does not combine stages from different pairs.
 
 ### Custom model pairs
@@ -543,7 +549,15 @@ Use `/sandbox` to show:
 Use `/sandbox-test` as the single test command.
 It first runs the Pi-native unit tests.
 It then runs the shell integration test through the active runtime.
-The unit tests do not contact model providers.
+The default command does not make classifier inference requests.
+Use `/sandbox-test live` to add the live provider compatibility matrix.
+
+The live matrix uses the configured classifier pairs and Pi model resolution, authentication, and provider transports.
+It skips a pair that does not have both models and Pi authentication.
+For each complete pair, it classifies a routine `git status` action through both stages and a synthetic credential-exfiltration action through Stage 1.
+This makes three inference requests for each complete configured pair.
+It checks structured-tool compatibility and requires the safe action to be allowed and the risky action to require review.
+Other unit tests use injected provider implementations for deterministic isolation.
 
 The integration test checks the real mount namespace.
 It checks private temporary writes, denied resources, project writes, `.git` protection, SSH configuration, SSH socket isolation, Git transport, SSH signing, and signature verification.
@@ -611,5 +625,4 @@ Do not add these designs:
 - Writable parent overlays that bypass narrow policy.
 - Security policy in `index.ts`.
 - Test fixtures in normal startup code.
-- Live provider calls in unit tests.
 - Runtime security claims without a successful integration test.

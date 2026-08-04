@@ -2,6 +2,7 @@ import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ManualTestExecution } from "../session.ts";
+import type { TestRunContext } from "./harness.ts";
 import { runSandboxUnitTests } from "./run.ts";
 
 const TEST_PNG = Buffer.from(
@@ -26,8 +27,11 @@ export interface SandboxTestCommandResult {
   readonly logPath: string;
 }
 
-export async function runSandboxTestCommand(execution: ManualTestExecution): Promise<SandboxTestCommandResult> {
-  const unit = await runSandboxUnitTests();
+export async function runSandboxTestCommand(
+  execution: ManualTestExecution,
+  context: TestRunContext = {},
+): Promise<SandboxTestCommandResult> {
+  const unit = await runSandboxUnitTests(context);
   const logPath = join(execution.projectCwd, "sandbox-manual-test.log");
   const fullOutput = [unit.output];
   const summary = [unit.output];

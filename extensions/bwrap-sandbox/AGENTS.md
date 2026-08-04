@@ -182,8 +182,9 @@ Do not copy or interpret the host system SSH include graph.
 
 The default ordered pairs are:
 
-1. `google/gemini-3.5-flash-lite` with `minimal`, then `google/gemini-3.6-flash` with `low`.
-2. `openai/gpt-5.4-nano` with `none`, then `openai/gpt-5.4-mini` with `low`.
+1. `openai/gpt-5.6-luna` with `low`, then `openai/gpt-5.6-luna` with `medium`.
+2. `google/gemini-3.5-flash-lite` with `minimal`, then `google/gemini-3.6-flash` with `low`.
+3. `openai/gpt-5.4-nano` with `none`, then `openai/gpt-5.4-mini` with `low`.
 
 The arrow is stage order.
 It is not fallback between individual models.
@@ -308,9 +309,14 @@ Import each test module from `tests/run.ts`.
 Keep `/sandbox-test` as the single test command.
 Do not add a separate regression suite or runner.
 
-Use injected filesystem inspectors, model registries, provider calls, clocks, and approval channels.
+Use injected filesystem inspectors, model registries, provider calls, clocks, and approval channels when isolation is useful.
 Unit tests must not require Bubblewrap.
-Unit tests must never contact a live model provider.
+Unit tests can contact live model providers when they test provider compatibility or classifier behavior.
+Use Pi model resolution, authentication, and provider implementations for live tests.
+Never add separate provider credentials or direct provider HTTP code for tests.
+Keep live tests explicit, lean, and separate from shell containment checks.
+Skip configured pairs that do not have both models and Pi authentication.
+After a pair passes preflight, treat provider, schema, structured-output, timeout, and behavior failures as test failures.
 
 Add unit tests for every new branch.
 Classifier tests must cover:
@@ -385,6 +391,6 @@ Do not add:
 - Writable parent overlays.
 - Automatic widening from exact grant scope to parent scope.
 - Test fixtures in startup code.
-- Paid startup probes or paid tests.
+- Paid startup probes.
 - Feature policy in `index.ts`.
 - Runtime security claims without an integration result.

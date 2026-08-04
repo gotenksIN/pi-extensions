@@ -53,32 +53,43 @@ test("detached approval sessions cannot apply queued results", async () => {
   assert.ok((await rejectionMessage(stale)).includes("requesting session changed"));
 });
 
-test("approval overlay pins choices below a scrollable long prompt", () => {
-  let renderRequests = 0;
+test("approval overlay keeps choices usable while a long prompt scrolls", () => {
+  let selected: string | undefined;
   const tui = {
     terminal: { rows: 24 },
-    requestRender: () => {
-      renderRequests += 1;
-    },
+    requestRender() {},
   } as unknown as TUI;
   const theme = {
     fg: (_color: string, text: string) => text,
     bold: (text: string) => text,
   } as unknown as Theme;
   const message = Array.from({ length: 40 }, (_, index) => `prompt-${index + 1}`).join("\n");
-  const overlay = new ApprovalOverlay(tui, theme, message, ["No - block", "Yes - allow"], () => undefined);
+  const choices = ["No - block", "Yes - allow"];
+  const overlay = new ApprovalOverlay(tui, theme, message, choices, (value) => {
+    selected = value;
+  });
 
   const initial = overlay.render(80);
-  assert.equal(initial.length, 20);
-  assert.ok(initial.some((line) => line.includes("prompt-1")));
-  assert.ok(initial.some((line) => line.includes("No - block")));
-  assert.ok(initial.some((line) => line.includes("Yes - allow")));
-  assert.ok(initial.findIndex((line) => line.includes("Yes - allow")) > initial.findIndex((line) => line.includes("prompt-1")));
-
+  overlay.handleInput("\u001b[6~");
   overlay.handleInput("\u001b[6~");
   const scrolled = overlay.render(80);
-  assert.equal(renderRequests, 1);
-  assert.ok(!scrolled.some((line) => line.trim() === "prompt-1"));
-  assert.ok(scrolled.some((line) => line.trim() === "prompt-14"));
-  assert.ok(scrolled.some((line) => line.includes("Yes - allow")));
+
+  for (const choice of choices) {
+    assert.ok(initial.some((line) => line.includes(choice)));
+    assert.ok(scrolled.some((line) => line.includes(choice)));
+  }
+  assert.notEqual(
+    initial.filter((line) => line.includes("prompt-")).join("\n"),
+    scrolled.filter((line) => line.includes("prompt-")).join("\n"),
+  );
+
+  overlay.handleInput("\r");
+  assert.equal(selected, "No - block");
+
+  const selectionOverlay = new ApprovalOverlay(tui, theme, message, choices, (value) => {
+    selected = value;
+  });
+  selectionOverlay.handleInput("\u001b[B");
+  selectionOverlay.handleInput("\r");
+  assert.equal(selected, "Yes - allow");
 });

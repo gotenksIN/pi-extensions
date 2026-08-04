@@ -64,8 +64,13 @@ test("project configuration cannot set or re-enable the global SSH capability", 
   );
 });
 
-test("classifier defaults use Google before the OpenAI pair", () => {
+test("classifier defaults use Luna before Gemini and the OpenAI 5.4 pair", () => {
   assert.deepEqual(DEFAULT_CLASSIFIER_CONFIG.pairs, [
+    {
+      provider: "openai",
+      stage1: { model: "gpt-5.6-luna", reasoning: "low" },
+      stage2: { model: "gpt-5.6-luna", reasoning: "medium" },
+    },
     {
       provider: "google",
       stage1: { model: "gemini-3.5-flash-lite", reasoning: "minimal" },

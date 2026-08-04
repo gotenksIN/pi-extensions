@@ -26,6 +26,7 @@ import type { ClassifierStatus } from "./classifier.ts";
 import type { ClassifierModelRegistry } from "./classifier-provider.ts";
 import type {
   ApprovedWriteGrants,
+  ClassifierConfig,
   CompiledSandboxConfig,
   FileAccess,
   SandboxDirectoryStatus,
@@ -122,6 +123,7 @@ export interface SandboxSession {
     proactiveBash?: ProactiveBashAccess,
   ): Promise<PersistentGrantResult>;
   status(): SessionStatusSnapshot;
+  classifierTestConfig(): ClassifierConfig | undefined;
   manualTestExecution(): ManualTestExecution;
 }
 
@@ -515,6 +517,10 @@ class Session implements SandboxSession {
       grants: state.kind === "ready" ? approvedGrantPaths(state.grants) : [],
       ...(this.safetyGate ? { classifier: this.safetyGate.status() } : {}),
     };
+  }
+
+  classifierTestConfig(): ClassifierConfig | undefined {
+    return this.current.config?.classifier;
   }
 
   manualTestExecution(): ManualTestExecution {

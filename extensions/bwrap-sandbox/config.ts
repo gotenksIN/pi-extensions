@@ -16,6 +16,11 @@ export const DEFAULT_CLASSIFIER_CONFIG: ClassifierConfig = {
   enabled: true,
   pairs: [
     {
+      provider: "openai",
+      stage1: { model: "gpt-5.6-luna", reasoning: "low" },
+      stage2: { model: "gpt-5.6-luna", reasoning: "medium" },
+    },
+    {
       provider: "google",
       stage1: { model: "gemini-3.5-flash-lite", reasoning: "minimal" },
       stage2: { model: "gemini-3.6-flash", reasoning: "low" },

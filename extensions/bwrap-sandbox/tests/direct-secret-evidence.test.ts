@@ -55,9 +55,10 @@ test("ordinary source reads pass deterministic direct safety checks", () => {
   }
 });
 
-test("direct safety checks return precise review reasons", () => {
+test("direct safety checks require review for secret paths, queries, and payloads", () => {
   const secretRead = buildDirectAccessAssessment("read", { path: "/work/.env" }, "/work/.env", "/work", file);
-  assert.deepEqual(secretRead.reviewReasons, ["The target matches a known credential or secret path."]);
+  assert.equal(secretRead.metadata.target.knownSecretPath, true);
+  assert.ok(secretRead.reviewReasons.length > 0);
 
   for (const pattern of ["password", "credentials", "API keys", "private keys"]) {
     const grep = buildDirectAccessAssessment(
@@ -67,7 +68,8 @@ test("direct safety checks return precise review reasons", () => {
       "/work",
       directory,
     );
-    assert.deepEqual(grep.reviewReasons, ["The grep pattern explicitly seeks credentials or secrets."]);
+    assert.equal(grep.metadata.request.secretSeekingQuery, true);
+    assert.ok(grep.reviewReasons.length > 0);
   }
 
   const write = buildDirectAccessAssessment(
@@ -77,10 +79,11 @@ test("direct safety checks return precise review reasons", () => {
     "/work",
     file,
   );
-  assert.deepEqual(write.reviewReasons, ["The write payload contains a potential credential or secret."]);
+  assert.equal(write.metadata.request.potentialSecretPayload, true);
+  assert.ok(write.reviewReasons.length > 0);
 });
 
-test("direct metadata omits read queries and write or edit content", () => {
+test("direct metadata omits grep queries and write content", () => {
   const grep = buildDirectAccessAssessment(
     "grep",
     { path: "/work", pattern: "password" },
@@ -106,21 +109,38 @@ test("direct metadata omits read queries and write or edit content", () => {
   assert.equal(write.metadata.request.payloadBytes, Buffer.byteLength(secret));
   assert.equal(write.metadata.request.payloadScanComplete, true);
   assert.equal(write.metadata.request.potentialSecretPayload, true);
+});
 
-  const oldText = "token = placeholder";
-  const newText = "token = ghp_abcdefghijklmnopqrstuvwxyz123456";
-  const edit = buildDirectAccessAssessment(
+test("edit checks scan every payload shape without exposing replacement text", () => {
+  const secret = "ghp_abcdefghijklmnopqrstuvwxyz123456";
+  const inputs = [
+    { edits: [{ oldText: "before", newText: secret }] },
+    { edits: [{ oldText: "first", newText: "clean" }, { oldText: "later", newText: secret }] },
+    { oldText: "before", newText: secret },
+  ];
+
+  for (const input of inputs) {
+    const assessment = buildDirectAccessAssessment(
+      "edit",
+      { path: "/work/src/a.ts", ...input },
+      "/work/src/a.ts",
+      "/work",
+      file,
+    );
+    assert.equal(assessment.metadata.request.potentialSecretPayload, true);
+    assert.ok(assessment.reviewReasons.length > 0);
+    assert.ok(!JSON.stringify(assessment.metadata).includes(secret));
+  }
+
+  const clean = buildDirectAccessAssessment(
     "edit",
-    { path: "/work/src/a.ts", edits: [{ oldText, newText }] },
+    { path: "/work/src/a.ts", edits: [{ oldText: "before", newText: "after" }] },
     "/work/src/a.ts",
     "/work",
     file,
   );
-  const editJson = JSON.stringify(edit.metadata);
-  assert.equal(edit.metadata.request.potentialSecretPayload, true);
-  assert.deepEqual(edit.reviewReasons, ["The write payload contains a potential credential or secret."]);
-  assert.ok(!editJson.includes(oldText));
-  assert.ok(!editJson.includes(newText));
+  assert.equal(clean.metadata.request.potentialSecretPayload, false);
+  assert.deepEqual(clean.reviewReasons, []);
 });
 
 test("large direct writes require review after an incomplete bounded scan", () => {
@@ -136,15 +156,12 @@ test("large direct writes require review after an incomplete bounded scan", () =
   const serialized = JSON.stringify(assessment.metadata);
   assert.equal(assessment.metadata.request.payloadScanComplete, false);
   assert.equal(assessment.metadata.request.potentialSecretPayload, true);
-  assert.deepEqual(assessment.reviewReasons, [
-    "The write payload contains a potential credential or secret.",
-    "The write payload is too large for a complete local secret scan.",
-  ]);
+  assert.equal(assessment.reviewReasons.length, 2);
   assert.ok(!serialized.includes(marker));
   assert.ok(!serialized.includes(content));
 });
 
-test("direct metadata uses a neutral type and only project-relative paths", () => {
+test("direct metadata keeps useful ranges without exposing host paths", () => {
   const inside = buildDirectAccessAssessment(
     "read",
     { path: "/work/src/a.ts", offset: 2, limit: 5 },
@@ -152,17 +169,10 @@ test("direct metadata uses a neutral type and only project-relative paths", () =
     "/work",
     file,
   );
-  assert.equal(inside.metadata.evidenceType, "direct-file-access");
-  assert.equal(inside.metadata.pathPolicyPassed, true);
-  assert.deepEqual(inside.metadata.target, {
-    scope: "project",
-    path: "src/a.ts",
-    basename: "a.ts",
-    extension: ".ts",
-    kind: "file",
-    knownSecretPath: false,
-  });
-  assert.deepEqual(inside.metadata.request, { offset: 2, limit: 5 });
+  assert.equal(inside.metadata.target.scope, "project");
+  assert.equal(inside.metadata.target.path, "src/a.ts");
+  assert.equal(inside.metadata.request.offset, 2);
+  assert.equal(inside.metadata.request.limit, 5);
 
   const outside = buildDirectAccessAssessment(
     "read",

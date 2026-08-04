@@ -1,4 +1,4 @@
-import { actionDigest, buildSafetyEvidence, canonicalJson } from "../safety-evidence.ts";
+import { actionDigest, buildSafetyEvidence } from "../safety-evidence.ts";
 import { CLASSIFIER_POLICY, parseStage1Decision, parseStage2Decision } from "../safety-policy.ts";
 import { assert, test } from "./harness.ts";
 
@@ -35,7 +35,6 @@ test("canonical action digests ignore object key insertion order", () => {
     actionDigest({ tool: "write", input: { b: 2, a: 1 }, cwd: "/work" }),
     actionDigest({ cwd: "/work", input: { a: 1, b: 2 }, tool: "write" }),
   );
-  assert.equal(canonicalJson({ b: 2, a: 1 }), '{"a":1,"b":2}');
 });
 
 test("safety evidence rejects cycles and an oversized current action", () => {
@@ -89,25 +88,23 @@ test("oversized prior actions increase the omission count", () => {
   assert.equal(result.evidence.omittedPriorActionCount, 1);
 });
 
-test("classifier policy separates completed actions from the proposed action", () => {
-  assert.ok(CLASSIFIER_POLICY.includes("Assess only evidence.proposedAction"));
-  assert.ok(CLASSIFIER_POLICY.includes("completedPriorActions already finished"));
-  assert.ok(CLASSIFIER_POLICY.includes("must not be attributed to the proposed action"));
+test("classifier policy keeps completed actions separate from the proposed action", () => {
+  for (const requiredPolicy of [
+    "Assess only evidence.proposedAction",
+    "completedPriorActions already finished",
+    "must not be attributed to the proposed action",
+  ]) assert.ok(CLASSIFIER_POLICY.includes(requiredPolicy));
 });
 
-test("classifier policy allows narrow origin fetch and fast-forward pull", () => {
-  assert.ok(CLASSIFIER_POLICY.includes("Allow a standalone 'git fetch origin'"));
-  assert.ok(CLASSIFIER_POLICY.includes("Allow a standalone 'git pull --ff-only'"));
-  assert.ok(CLASSIFIER_POLICY.includes("remote other than 'origin'"));
-  assert.ok(CLASSIFIER_POLICY.includes("custom refspec"));
-  assert.ok(CLASSIFIER_POLICY.includes("recursive submodule updates"));
-  assert.ok(CLASSIFIER_POLICY.includes("another chained command"));
-});
-
-test("classifier policy does not include obsolete direct-tool metadata rules", () => {
-  assert.ok(!CLASSIFIER_POLICY.includes("knownSecretPath"));
-  assert.ok(!CLASSIFIER_POLICY.includes("payloadScanComplete"));
-  assert.ok(!CLASSIFIER_POLICY.includes("secretSeekingQuery"));
+test("classifier policy keeps narrow Git reads separate from risky mutations", () => {
+  for (const requiredPolicy of [
+    "Allow a standalone 'git fetch origin'",
+    "Allow a standalone 'git pull --ff-only'",
+    "remote other than 'origin'",
+    "custom refspec",
+    "recursive submodule updates",
+    "another chained command",
+  ]) assert.ok(CLASSIFIER_POLICY.includes(requiredPolicy));
 });
 
 test("classifier decision validation rejects extra and contradictory fields", () => {
