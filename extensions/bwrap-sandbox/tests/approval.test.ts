@@ -1,5 +1,7 @@
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
+import type { TUI } from "@earendil-works/pi-tui";
 import { createApprovalChannel, selectApproval } from "../approval.ts";
+import { ApprovalOverlay } from "../approval-ui.ts";
 import { assert, test } from "./harness.ts";
 
 function context(sessionId: string, hasUI = true): ExtensionContext {
@@ -49,4 +51,34 @@ test("detached approval sessions cannot apply queued results", async () => {
   const stale = channel.request("request", ["Yes"]);
   channel.detach();
   assert.ok((await rejectionMessage(stale)).includes("requesting session changed"));
+});
+
+test("approval overlay pins choices below a scrollable long prompt", () => {
+  let renderRequests = 0;
+  const tui = {
+    terminal: { rows: 24 },
+    requestRender: () => {
+      renderRequests += 1;
+    },
+  } as unknown as TUI;
+  const theme = {
+    fg: (_color: string, text: string) => text,
+    bold: (text: string) => text,
+  } as unknown as Theme;
+  const message = Array.from({ length: 40 }, (_, index) => `prompt-${index + 1}`).join("\n");
+  const overlay = new ApprovalOverlay(tui, theme, message, ["No - block", "Yes - allow"], () => undefined);
+
+  const initial = overlay.render(80);
+  assert.equal(initial.length, 20);
+  assert.ok(initial.some((line) => line.includes("prompt-1")));
+  assert.ok(initial.some((line) => line.includes("No - block")));
+  assert.ok(initial.some((line) => line.includes("Yes - allow")));
+  assert.ok(initial.findIndex((line) => line.includes("Yes - allow")) > initial.findIndex((line) => line.includes("prompt-1")));
+
+  overlay.handleInput("\u001b[6~");
+  const scrolled = overlay.render(80);
+  assert.equal(renderRequests, 1);
+  assert.ok(!scrolled.some((line) => line.trim() === "prompt-1"));
+  assert.ok(scrolled.some((line) => line.trim() === "prompt-14"));
+  assert.ok(scrolled.some((line) => line.includes("Yes - allow")));
 });

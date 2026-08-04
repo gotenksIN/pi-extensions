@@ -277,7 +277,8 @@ A subagent cannot approve its own request.
 A subagent request must use an interactive parent approval owner.
 Requests fail closed when no owner is available.
 A forwarded approval opens as a focused overlay above a child conversation viewer.
-The prompt remains readable without access to the other extension's private overlay lifecycle.
+The approval choices stay at the bottom of the overlay when a long command fills the prompt.
+Use Page Up and Page Down to scroll the prompt while Up and Down select a choice.
 Overlay state does not affect approval validation.
 
 ## Safety classifier
