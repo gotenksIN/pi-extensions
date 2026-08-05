@@ -7,8 +7,8 @@ The tool uses provider-native web search and returns a concise answer with inlin
 
 The default order is:
 
-1. Google Gemini: `google/gemini-3.6-flash`
-2. OpenAI: `openai/gpt-5.5`
+1. OpenAI: `openai/gpt-5.6-luna`
+2. Google Gemini: `google/gemini-3.6-flash`
 
 The first successful backend returns the result.
 
@@ -61,8 +61,8 @@ The extension accepts an ordered `models` list:
 ```json
 {
   "models": [
-    { "provider": "google", "model": "gemini-3.6-flash" },
-    { "provider": "openai", "model": "gpt-5.5" }
+    { "provider": "openai", "model": "gpt-5.6-luna" },
+    { "provider": "google", "model": "gemini-3.6-flash" }
   ]
 }
 ```
@@ -72,8 +72,8 @@ The compact string form is also valid:
 ```json
 {
   "models": [
-    "google/gemini-3.6-flash",
-    "openai/gpt-5.5"
+    "openai/gpt-5.6-luna",
+    "google/gemini-3.6-flash"
   ]
 }
 ```

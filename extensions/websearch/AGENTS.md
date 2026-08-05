@@ -77,6 +77,11 @@ A missing model or authentication result is a technical target failure and may u
 
 ## Fallback invariants
 
+The default ordered targets are:
+
+1. `openai/gpt-5.6-luna`.
+2. `google/gemini-3.6-flash`.
+
 Build the search plan as:
 
 1. An explicit tool-call target, when supplied.
@@ -136,7 +141,7 @@ Cancellation must propagate through `AbortSignal`.
 Before a change, verify:
 
 - Does the change preserve Pi model registry and authentication reuse?
-- Does it keep Google first in the default plan?
+- Does it keep OpenAI first in the default plan?
 - Does it preserve ordered fallback and abort behavior?
 - Can provider output inject credentials, control text, or false citation data?
 - Are source URLs and error messages bounded and safe to return?

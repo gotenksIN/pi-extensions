@@ -10,13 +10,13 @@
  * Inherits auth/base URLs/headers from Pi's configured providers — no separate env vars needed.
  *
  * Default fallback order:
- *   google/gemini-3.6-flash -> openai/gpt-5.5
+ *   openai/gpt-5.6-luna -> google/gemini-3.6-flash
  *
  * Example config:
  * {
  *   "models": [
- *     { "provider": "google", "model": "gemini-3.6-flash" },
- *     { "provider": "openai", "model": "gpt-5.5" }
+ *     { "provider": "openai", "model": "gpt-5.6-luna" },
+ *     { "provider": "google", "model": "gemini-3.6-flash" }
  *   ]
  * }
  */
@@ -66,8 +66,8 @@ interface ResolvedModelAuth {
 type ToolContext = Parameters<Parameters<ExtensionAPI["registerTool"]>[0]["execute"]>[4];
 
 const DEFAULT_MODELS: WebsearchModelConfig[] = [
+  { provider: "openai", model: "gpt-5.6-luna" },
   { provider: "google", model: "gemini-3.6-flash" },
-  { provider: "openai", model: "gpt-5.5" },
 ];
 
 const DEFAULT_CONFIG: WebsearchConfig = {
@@ -659,7 +659,7 @@ export default function (pi: ExtensionAPI) {
     name: "websearch_cited",
     label: "Web Search (Cited)",
     description:
-      "Performs provider-native grounded web search with ordered fallback: Google, then OpenAI by default. " +
+      "Performs provider-native grounded web search with ordered fallback: OpenAI, then Google by default. " +
       "Returns a concise digest with inline citations and a Sources list of URLs. " +
       "Use optional provider/model parameters to try a specific backend first. " +
       "Returns results with citation markers like [1][2] and a Sources section at the end. " +
@@ -676,7 +676,7 @@ export default function (pi: ExtensionAPI) {
         Type.Literal("google"),
         Type.Literal("openai"),
       ], { description: "Optional provider to try first: google or openai" })),
-      model: Type.Optional(Type.String({ description: "Optional model id to try first, e.g. gemini-3.6-flash or gpt-5.5" })),
+      model: Type.Optional(Type.String({ description: "Optional model id to try first, e.g. gpt-5.6-luna or gemini-3.6-flash" })),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       const query = params.query?.trim();
