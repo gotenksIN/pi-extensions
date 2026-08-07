@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 340" width="100%" height="100%" style="font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <defs>
+    <style>
+      .text-title { fill: #0f172a; font-weight: 800; }
+      .text-actor { fill: #0f172a; font-weight: 700; }
+      .actor-box { fill: #f1f5f9; stroke: #0284c7; stroke-width: 1.5; }
+      .lifeline { stroke: #cbd5e1; stroke-width: 1.5; stroke-dasharray: 4,4; }
+      .msg-line-amber { stroke: #f59e0b; stroke-width: 1.8; }
+      .msg-line-green { stroke: #10b981; stroke-width: 2; }
+      .msg-line-std { stroke: #0284c7; stroke-width: 1.8; }
+      .msg-text-amber { fill: #b45309; font-size: 11px; font-weight: 700; }
+      .msg-text-green { fill: #047857; font-size: 11px; font-weight: 700; }
+      .msg-text-std { fill: #334155; font-size: 11px; font-weight: 600; }
+
+      @media (prefers-color-scheme: dark) {
+        .text-title { fill: #f8fafc; }
+        .text-actor { fill: #f8fafc; }
+        .actor-box { fill: #1e293b; stroke: #38bdf8; }
+        .lifeline { stroke: #334155; }
+        .msg-line-amber { stroke: #fbbf24; }
+        .msg-line-green { stroke: #34d399; }
+        .msg-line-std { stroke: #38bdf8; }
+        .msg-text-amber { fill: #fbbf24; }
+        .msg-text-green { fill: #6ee7b7; }
+        .msg-text-std { fill: #cbd5e1; }
+      }
+    </style>
+    <marker id="arr-amber" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#f59e0b" />
+    </marker>
+    <marker id="arr-green" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#10b981" />
+    </marker>
+    <marker id="arr-std" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#0284c7" />
+    </marker>
+  </defs>
+
+  <text x="470" y="32" text-anchor="middle" class="text-title" font-size="18">Sequence 2.2.4: Human Review &amp; Persistent Policy Learning</text>
+
+  <line x1="80" y1="80" x2="80" y2="300" class="lifeline" />
+  <rect x="25" y="50" width="110" height="30" rx="6" class="actor-box" />
+  <text x="80" y="70" text-anchor="middle" class="text-actor" font-size="11">Tool Call</text>
+
+  <line x1="260" y1="80" x2="260" y2="300" class="lifeline" />
+  <rect x="205" y="50" width="110" height="30" rx="6" class="actor-box" />
+  <text x="260" y="70" text-anchor="middle" class="text-actor" font-size="11">SafetyGate</text>
+
+  <line x1="460" y1="80" x2="460" y2="300" class="lifeline" />
+  <rect x="405" y="50" width="110" height="30" rx="6" class="actor-box" stroke="#d97706" />
+  <text x="460" y="70" text-anchor="middle" class="text-actor" font-size="11">ApprovalUI</text>
+
+  <line x1="660" y1="80" x2="660" y2="300" class="lifeline" />
+  <rect x="605" y="50" width="110" height="30" rx="6" class="actor-box" />
+  <text x="660" y="70" text-anchor="middle" class="text-actor" font-size="11">PolicyEngine</text>
+
+  <line x1="860" y1="80" x2="860" y2="300" class="lifeline" />
+  <rect x="800" y="50" width="120" height="30" rx="6" class="actor-box" />
+  <text x="860" y="70" text-anchor="middle" class="text-actor" font-size="11">bwrap Sandbox</text>
+
+  <path d="M 80 110 L 260 110" fill="none" class="msg-line-std" marker-end="url(#arr-std)" />
+  <text x="170" y="103" text-anchor="middle" class="msg-text-std">1. High-Risk / Prompt Command</text>
+
+  <path d="M 260 140 L 460 140" fill="none" class="msg-line-amber" marker-end="url(#arr-amber)" />
+  <text x="360" y="133" text-anchor="middle" class="msg-text-amber">2. Display Interactive Approval Prompt</text>
+
+  <path d="M 460 170 L 260 170" fill="none" class="msg-line-green" marker-end="url(#arr-green)" />
+  <text x="360" y="163" text-anchor="middle" class="msg-text-green">3. User Selection: Save to Project Policy ✓</text>
+
+  <path d="M 460 200 L 660 200" fill="none" class="msg-line-amber" marker-end="url(#arr-amber)" />
+  <text x="560" y="193" text-anchor="middle" class="msg-text-amber">4. Persist Rule to .pi/sandbox-rules.json</text>
+
+  <path d="M 660 230 L 460 230" fill="none" class="msg-line-green" marker-end="url(#arr-green)" />
+  <text x="560" y="223" text-anchor="middle" class="msg-text-green">Hot-Reload &amp; Activate Policy</text>
+
+  <path d="M 260 260 L 860 260" fill="none" class="msg-line-green" marker-end="url(#arr-green)" />
+  <text x="560" y="253" text-anchor="middle" class="msg-text-green">5. Issue Execution Permit &amp; Spawn bwrap Sandbox</text>
+</svg>

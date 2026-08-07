@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 320" width="100%" height="100%" style="font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <defs>
+    <style>
+      .text-title { fill: #0f172a; font-weight: 800; }
+      .text-actor { fill: #0f172a; font-weight: 700; }
+      .actor-box { fill: #f1f5f9; stroke: #0284c7; stroke-width: 1.5; }
+      .lifeline { stroke: #cbd5e1; stroke-width: 1.5; stroke-dasharray: 4,4; }
+      .msg-line { stroke: #10b981; stroke-width: 2; }
+      .msg-line-std { stroke: #0284c7; stroke-width: 1.8; }
+      .msg-text { fill: #047857; font-size: 11px; font-weight: 700; }
+      .msg-text-std { fill: #334155; font-size: 11px; font-weight: 600; }
+
+      @media (prefers-color-scheme: dark) {
+        .text-title { fill: #f8fafc; }
+        .text-actor { fill: #f8fafc; }
+        .actor-box { fill: #1e293b; stroke: #38bdf8; }
+        .lifeline { stroke: #334155; }
+        .msg-line { stroke: #34d399; }
+        .msg-line-std { stroke: #38bdf8; }
+        .msg-text { fill: #6ee7b7; }
+        .msg-text-std { fill: #cbd5e1; }
+      }
+    </style>
+    <marker id="arr-green" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#10b981" />
+    </marker>
+    <marker id="arr-std" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#0284c7" />
+    </marker>
+  </defs>
+
+  <text x="440" y="32" text-anchor="middle" class="text-title" font-size="18">Sequence 2.2.1: Tier 1 Fast-Path Zero-Latency Execution</text>
+
+  <line x1="80" y1="80" x2="80" y2="280" class="lifeline" />
+  <rect x="25" y="50" width="110" height="30" rx="6" class="actor-box" stroke="#0284c7" />
+  <text x="80" y="70" text-anchor="middle" class="text-actor" font-size="11">Tool Call</text>
+
+  <line x1="260" y1="80" x2="260" y2="280" class="lifeline" />
+  <rect x="205" y="50" width="110" height="30" rx="6" class="actor-box" />
+  <text x="260" y="70" text-anchor="middle" class="text-actor" font-size="11">SafetyGate</text>
+
+  <line x1="440" y1="80" x2="440" y2="280" class="lifeline" />
+  <rect x="385" y="50" width="110" height="30" rx="6" class="actor-box" />
+  <text x="440" y="70" text-anchor="middle" class="text-actor" font-size="11">BashAST</text>
+
+  <line x1="620" y1="80" x2="620" y2="280" class="lifeline" />
+  <rect x="565" y="50" width="110" height="30" rx="6" class="actor-box" />
+  <text x="620" y="70" text-anchor="middle" class="text-actor" font-size="11">PolicyEngine</text>
+
+  <line x1="790" y1="80" x2="790" y2="280" class="lifeline" />
+  <rect x="730" y="50" width="120" height="30" rx="6" class="actor-box" />
+  <text x="790" y="70" text-anchor="middle" class="text-actor" font-size="11">bwrap Sandbox</text>
+
+  <path d="M 80 110 L 260 110" fill="none" class="msg-line-std" marker-end="url(#arr-std)" />
+  <text x="170" y="103" text-anchor="middle" class="msg-text-std">1. Shell Call (git status)</text>
+
+  <path d="M 260 140 L 440 140" fill="none" class="msg-line-std" marker-end="url(#arr-std)" />
+  <text x="350" y="133" text-anchor="middle" class="msg-text-std">2. Decompose AST</text>
+
+  <path d="M 260 170 L 620 170" fill="none" class="msg-line-std" marker-end="url(#arr-std)" />
+  <text x="440" y="163" text-anchor="middle" class="msg-text-std">3. Evaluate Rules</text>
+
+  <path d="M 620 200 L 260 200" fill="none" class="msg-line" marker-end="url(#arr-green)" />
+  <text x="440" y="193" text-anchor="middle" class="msg-text">Static Allow Matched ✓ (Zero Latency)</text>
+
+  <path d="M 260 230 L 790 230" fill="none" class="msg-line" marker-end="url(#arr-green)" />
+  <text x="525" y="223" text-anchor="middle" class="msg-text">4. Claim Permit &amp; Fork bwrap Sandbox</text>
+
+  <path d="M 790 260 L 80 260" fill="none" stroke="#64748b" stroke-width="1.5" stroke-dasharray="3,3" />
+  <text x="435" y="253" text-anchor="middle" class="msg-text-std">5. Return Execution Output</text>
+</svg>

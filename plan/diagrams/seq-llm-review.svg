@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 320" width="100%" height="100%" style="font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <defs>
+    <style>
+      .text-title { fill: #0f172a; font-weight: 800; }
+      .text-actor { fill: #0f172a; font-weight: 700; }
+      .actor-box { fill: #f1f5f9; stroke: #0284c7; stroke-width: 1.5; }
+      .lifeline { stroke: #cbd5e1; stroke-width: 1.5; stroke-dasharray: 4,4; }
+      .msg-line-purple { stroke: #8b5cf6; stroke-width: 1.8; }
+      .msg-line-green { stroke: #10b981; stroke-width: 2; }
+      .msg-line-std { stroke: #0284c7; stroke-width: 1.8; }
+      .msg-text-purple { fill: #6d28d9; font-size: 11px; font-weight: 700; }
+      .msg-text-green { fill: #047857; font-size: 11px; font-weight: 700; }
+      .msg-text-std { fill: #334155; font-size: 11px; font-weight: 600; }
+
+      @media (prefers-color-scheme: dark) {
+        .text-title { fill: #f8fafc; }
+        .text-actor { fill: #f8fafc; }
+        .actor-box { fill: #1e293b; stroke: #38bdf8; }
+        .lifeline { stroke: #334155; }
+        .msg-line-purple { stroke: #a78bfa; }
+        .msg-line-green { stroke: #34d399; }
+        .msg-line-std { stroke: #38bdf8; }
+        .msg-text-purple { fill: #c084fc; }
+        .msg-text-green { fill: #6ee7b7; }
+        .msg-text-std { fill: #cbd5e1; }
+      }
+    </style>
+    <marker id="arr-purple" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#8b5cf6" />
+    </marker>
+    <marker id="arr-green" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#10b981" />
+    </marker>
+    <marker id="arr-std" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#0284c7" />
+    </marker>
+  </defs>
+
+  <text x="460" y="32" text-anchor="middle" class="text-title" font-size="18">Sequence 2.2.3: Tier 2 LLM Risk Review Sequence</text>
+
+  <line x1="80" y1="80" x2="80" y2="280" class="lifeline" />
+  <rect x="25" y="50" width="110" height="30" rx="6" class="actor-box" />
+  <text x="80" y="70" text-anchor="middle" class="text-actor" font-size="11">Tool Call</text>
+
+  <line x1="260" y1="80" x2="260" y2="280" class="lifeline" />
+  <rect x="205" y="50" width="110" height="30" rx="6" class="actor-box" />
+  <text x="260" y="70" text-anchor="middle" class="text-actor" font-size="11">SafetyGate</text>
+
+  <line x1="460" y1="80" x2="460" y2="280" class="lifeline" />
+  <rect x="405" y="50" width="110" height="30" rx="6" class="actor-box" />
+  <text x="460" y="70" text-anchor="middle" class="text-actor" font-size="11">PolicyEngine</text>
+
+  <line x1="660" y1="80" x2="660" y2="280" class="lifeline" />
+  <rect x="605" y="50" width="110" height="30" rx="6" class="actor-box" stroke="#7c3aed" />
+  <text x="660" y="70" text-anchor="middle" class="text-actor" font-size="11">LLMReviewer</text>
+
+  <line x1="840" y1="80" x2="840" y2="280" class="lifeline" />
+  <rect x="780" y="50" width="120" height="30" rx="6" class="actor-box" />
+  <text x="840" y="70" text-anchor="middle" class="text-actor" font-size="11">bwrap Sandbox</text>
+
+  <path d="M 80 110 L 260 110" fill="none" class="msg-line-std" marker-end="url(#arr-std)" />
+  <text x="170" y="103" text-anchor="middle" class="msg-text-std">1. Dynamic Call (docker run $IMG)</text>
+
+  <path d="M 260 140 L 460 140" fill="none" class="msg-line-std" marker-end="url(#arr-std)" />
+  <text x="360" y="133" text-anchor="middle" class="msg-text-std">2. Evaluate Static Policy</text>
+
+  <path d="M 460 170 L 260 170" fill="none" class="msg-line-purple" marker-end="url(#arr-purple)" />
+  <text x="360" y="163" text-anchor="middle" class="msg-text-purple">Indeterminate Policy Result</text>
+
+  <path d="M 260 200 L 660 200" fill="none" class="msg-line-purple" marker-end="url(#arr-purple)" />
+  <text x="460" y="193" text-anchor="middle" class="msg-text-purple">3. Request LLM Risk Review (openai/gpt-5.6-luna)</text>
+
+  <path d="M 660 230 L 260 230" fill="none" class="msg-line-green" marker-end="url(#arr-green)" />
+  <text x="460" y="223" text-anchor="middle" class="msg-text-green">LLM Structured Decision: Allow (Safe) ✓</text>
+
+  <path d="M 260 260 L 840 260" fill="none" class="msg-line-green" marker-end="url(#arr-green)" />
+  <text x="550" y="253" text-anchor="middle" class="msg-text-green">4. Issue Single-Use Permit &amp; Spawn bwrap Sandbox</text>
+</svg>

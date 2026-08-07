@@ -1,0 +1,190 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 720" width="100%" height="100%" style="font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <defs>
+    <style>
+      .text-title { fill: #0f172a; }
+      .text-subtitle { fill: #475569; }
+      .text-muted { fill: #64748b; }
+      
+      .box-incoming { fill: #ffffff; stroke: #0284c7; stroke-width: 2; }
+      .text-incoming { fill: #0f172a; font-weight: 700; }
+
+      .box-tier1 { fill: #f0f9ff; stroke: #0284c7; stroke-width: 2; }
+      .text-tier1-title { fill: #0369a1; font-weight: 700; }
+      .text-tier1-sub { fill: #334155; }
+      
+      .box-tier2 { fill: #faf5ff; stroke: #7c3aed; stroke-width: 2; }
+      .text-tier2-title { fill: #6d28d9; font-weight: 700; }
+      .text-tier2-sub { fill: #4c1d95; }
+
+      .box-tier3 { fill: #f0fdf4; stroke: #059669; stroke-width: 2.5; }
+      .text-tier3-title { fill: #047857; font-weight: 800; }
+      .text-tier3-sub { fill: #065f46; }
+
+      .box-fastpath { fill: #ffffff; stroke: #10b981; stroke-width: 1.5; }
+      .text-fastpath-title { fill: #047857; font-weight: 700; }
+
+      .badge-allow { fill: #dcfce7; stroke: #16a34a; stroke-width: 1; }
+      .text-allow { fill: #15803d; font-weight: 700; }
+
+      .badge-deny { fill: #fee2e2; stroke: #dc2626; stroke-width: 1.5; }
+      .text-deny { fill: #b91c1c; font-weight: 700; }
+
+      .box-human { fill: #fffbe3; stroke: #d97706; stroke-width: 1.5; }
+      .text-human-title { fill: #b45309; font-weight: 700; }
+      .text-human-sub { fill: #92400e; }
+
+      .chip-tier3 { fill: #d1fae5; stroke: #059669; stroke-width: 1; }
+      .text-chip { fill: #065f46; font-weight: 600; }
+
+      .arrow-std { stroke: #0284c7; stroke-width: 2; }
+      .arrow-green { stroke: #10b981; stroke-width: 2.5; }
+      .arrow-purple { stroke: #8b5cf6; stroke-width: 2; }
+      .arrow-red { stroke: #ef4444; stroke-width: 2; }
+      .arrow-amber { stroke: #f59e0b; stroke-width: 2; }
+
+      @media (prefers-color-scheme: dark) {
+        .text-title { fill: #f8fafc; }
+        .text-subtitle { fill: #94a3b8; }
+        .text-muted { fill: #94a3b8; }
+
+        .box-incoming { fill: #1e293b; stroke: #38bdf8; }
+        .text-incoming { fill: #f8fafc; }
+
+        .box-tier1 { fill: #0f172a; stroke: #38bdf8; }
+        .text-tier1-title { fill: #38bdf8; }
+        .text-tier1-sub { fill: #cbd5e1; }
+
+        .box-tier2 { fill: #2e1065; stroke: #a78bfa; }
+        .text-tier2-title { fill: #c084fc; }
+        .text-tier2-sub { fill: #e9d5ff; }
+
+        .box-tier3 { fill: #064e3b; stroke: #34d399; }
+        .text-tier3-title { fill: #6ee7b7; }
+        .text-tier3-sub { fill: #a7f3d0; }
+
+        .box-fastpath { fill: #0f172a; stroke: #34d399; }
+        .text-fastpath-title { fill: #34d399; }
+
+        .badge-allow { fill: #065f46; stroke: #10b981; }
+        .text-allow { fill: #6ee7b7; }
+
+        .badge-deny { fill: #450a0a; stroke: #ef4444; }
+        .text-deny { fill: #fca5a5; }
+
+        .box-human { fill: #291e0b; stroke: #f59e0b; }
+        .text-human-title { fill: #fbbf24; }
+        .text-human-sub { fill: #fde68a; }
+
+        .chip-tier3 { fill: #065f46; stroke: #10b981; }
+        .text-chip { fill: #a7f3d0; }
+
+        .arrow-std { stroke: #38bdf8; }
+        .arrow-green { stroke: #34d399; }
+        .arrow-purple { stroke: #a78bfa; }
+        .arrow-red { stroke: #f87171; }
+        .arrow-amber { stroke: #fbbf24; }
+      }
+    </style>
+
+    <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#0284c7" />
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#10b981" />
+    </marker>
+    <marker id="arrow-red" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#ef4444" />
+    </marker>
+    <marker id="arrow-amber" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#f59e0b" />
+    </marker>
+    <marker id="arrow-purple" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#8b5cf6" />
+    </marker>
+  </defs>
+
+  <text x="500" y="42" text-anchor="middle" class="text-title" font-size="24" font-weight="800" letter-spacing="0.5">Core Architecture: Tri-Tier Hybrid Sandbox Engine</text>
+  <text x="500" y="65" text-anchor="middle" class="text-subtitle" font-size="13">AST Fast-Path Policy → LLM Risk Reviewer → Hardened OS Containment Boundary</text>
+
+  <!-- Incoming Call -->
+  <rect x="350" y="90" width="300" height="48" rx="8" class="box-incoming" />
+  <text x="500" y="119" text-anchor="middle" class="text-incoming" font-size="15">Incoming Shell Tool Call</text>
+
+  <path d="M 500 138 L 500 168" fill="none" class="arrow-std" marker-end="url(#arrow)" />
+
+  <!-- Tier 1 -->
+  <rect x="160" y="170" width="680" height="85" rx="10" class="box-tier1" />
+  <rect x="180" y="182" width="60" height="20" rx="4" fill="#0284c7" />
+  <text x="210" y="196" text-anchor="middle" fill="#ffffff" font-size="11" font-weight="800">TIER 1</text>
+  <text x="500" y="198" text-anchor="middle" class="text-tier1-title" font-size="16">AST Parsing &amp; Fast-Path Policy Engine</text>
+  <text x="500" y="221" text-anchor="middle" class="text-tier1-sub" font-size="13">tree-sitter-bash WASM Decomposition  •  Starlark / Strict JSON Rules</text>
+  <text x="500" y="240" text-anchor="middle" class="text-muted" font-size="11">Subcommand Splitting  •  Wrapper Unwrapping (sudo/env/xargs)  •  Argument Normalization</text>
+
+  <!-- Branches -->
+  <path d="M 330 255 L 330 310 L 250 310 L 250 330" fill="none" class="arrow-green" marker-end="url(#arrow-green)" />
+  <rect x="200" y="285" width="150" height="22" rx="4" class="badge-allow" />
+  <text x="275" y="300" text-anchor="middle" class="text-allow" font-size="11">Matched Static Rule</text>
+
+  <path d="M 670 255 L 670 310 L 740 310 L 740 330" fill="none" class="arrow-purple" marker-end="url(#arrow-purple)" />
+  <rect x="660" y="285" width="160" height="22" rx="4" fill="#8b5cf6" />
+  <text x="740" y="300" text-anchor="middle" fill="#ffffff" font-size="11" font-weight="700">Ambiguous / Mutating</text>
+
+  <!-- Fast Path Box -->
+  <rect x="80" y="332" width="340" height="75" rx="8" class="box-fastpath" />
+  <text x="250" y="357" text-anchor="middle" class="text-fastpath-title" font-size="15">Deterministic Fast-Path</text>
+  <text x="250" y="378" text-anchor="middle" class="text-subtitle" font-size="12">Zero-Latency Allow or Hard Veto</text>
+  <text x="250" y="394" text-anchor="middle" class="text-muted" font-size="11">git status, git diff, cargo check, npm test</text>
+
+  <!-- Tier 2 Box -->
+  <rect x="580" y="332" width="340" height="75" rx="8" class="box-tier2" />
+  <rect x="595" y="342" width="60" height="20" rx="4" fill="#7c3aed" />
+  <text x="625" y="356" text-anchor="middle" fill="#ffffff" font-size="11" font-weight="800">TIER 2</text>
+  <text x="750" y="357" text-anchor="middle" class="text-tier2-title" font-size="15">LLM Risk Reviewer</text>
+  <text x="750" y="378" text-anchor="middle" class="text-tier2-sub" font-size="12">openai/gpt-5.6-luna / Gemini</text>
+  <text x="750" y="394" text-anchor="middle" class="text-tier2-sub" font-size="11">Structured Evidence &amp; Risk Classification</text>
+
+  <!-- Connections -->
+  <path d="M 200 407 L 200 560" fill="none" class="arrow-green" marker-end="url(#arrow-green)" />
+  <rect x="155" y="475" width="90" height="22" rx="4" class="badge-allow" />
+  <text x="200" y="490" text-anchor="middle" class="text-allow" font-size="11">Fast Allow ✓</text>
+
+  <path d="M 350 407 L 350 450" fill="none" class="arrow-red" marker-end="url(#arrow-red)" />
+  <rect x="290" y="452" width="120" height="40" rx="6" class="badge-deny" />
+  <text x="350" y="476" text-anchor="middle" class="text-deny" font-size="12">Hard Denied ✗</text>
+
+  <path d="M 660 407 L 660 560" fill="none" class="arrow-green" marker-end="url(#arrow-green)" />
+  <rect x="615" y="475" width="90" height="22" rx="4" class="badge-allow" />
+  <text x="660" y="490" text-anchor="middle" class="text-allow" font-size="11">LLM Allow ✓</text>
+
+  <path d="M 820 407 L 820 450" fill="none" class="arrow-amber" marker-end="url(#arrow-amber)" />
+
+  <!-- Human Prompt Box -->
+  <rect x="710" y="452" width="220" height="75" rx="8" class="box-human" />
+  <text x="820" y="474" text-anchor="middle" class="text-human-title" font-size="13">Human Review Prompt</text>
+  <text x="820" y="493" text-anchor="middle" class="text-human-sub" font-size="11">Approve Once  •  Session Pattern</text>
+  <text x="820" y="510" text-anchor="middle" class="text-human-sub" font-size="11">Save to Project / Global Policy</text>
+
+  <path d="M 760 527 L 760 545 L 560 545 L 560 560" fill="none" class="arrow-green" marker-end="url(#arrow-green)" />
+
+  <path d="M 870 527 L 870 545 L 870 560" fill="none" class="arrow-red" marker-end="url(#arrow-red)" />
+  <rect x="820" y="562" width="100" height="30" rx="4" class="badge-deny" />
+  <text x="870" y="581" text-anchor="middle" class="text-deny" font-size="11">User Denied ✗</text>
+
+  <!-- Tier 3 Container -->
+  <rect x="60" y="565" width="720" height="125" rx="10" class="box-tier3" />
+  <rect x="80" y="577" width="60" height="20" rx="4" fill="#059669" />
+  <text x="110" y="591" text-anchor="middle" fill="#ffffff" font-size="11" font-weight="800">TIER 3</text>
+  <text x="420" y="593" text-anchor="middle" class="text-tier3-title" font-size="17">Hardened OS Execution Boundary</text>
+  <text x="420" y="617" text-anchor="middle" class="text-tier3-sub" font-size="13">Bubblewrap Mount Namespaces  •  Landlock LSM  •  Seccomp BPF</text>
+  
+  <rect x="85" y="632" width="190" height="26" rx="4" class="chip-tier3" />
+  <text x="180" y="649" text-anchor="middle" class="text-chip" font-size="11">Ephemeral Cache Mounts</text>
+
+  <rect x="290" y="632" width="260" height="26" rx="4" class="chip-tier3" />
+  <text x="420" y="649" text-anchor="middle" class="text-chip" font-size="11">Network Profiles (none/restricted/full)</text>
+
+  <rect x="565" y="632" width="195" height="26" rx="4" class="chip-tier3" />
+  <text x="662" y="649" text-anchor="middle" class="text-chip" font-size="11">bwrap-hardened Launcher</text>
+
+  <text x="420" y="677" text-anchor="middle" class="text-tier3-title" font-size="11">Isolated Process Executed Securely</text>
+</svg>

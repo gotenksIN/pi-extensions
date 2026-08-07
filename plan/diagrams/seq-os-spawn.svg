@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 320" width="100%" height="100%" style="font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <defs>
+    <style>
+      .text-title { fill: #0f172a; font-weight: 800; }
+      .text-actor { fill: #0f172a; font-weight: 700; }
+      .actor-box { fill: #f1f5f9; stroke: #0284c7; stroke-width: 1.5; }
+      .lifeline { stroke: #cbd5e1; stroke-width: 1.5; stroke-dasharray: 4,4; }
+      .msg-line-green { stroke: #10b981; stroke-width: 2; }
+      .msg-line-std { stroke: #0284c7; stroke-width: 1.8; }
+      .msg-text-green { fill: #047857; font-size: 11px; font-weight: 700; }
+      .msg-text-std { fill: #334155; font-size: 11px; font-weight: 600; }
+
+      @media (prefers-color-scheme: dark) {
+        .text-title { fill: #f8fafc; }
+        .text-actor { fill: #f8fafc; }
+        .actor-box { fill: #1e293b; stroke: #38bdf8; }
+        .lifeline { stroke: #334155; }
+        .msg-line-green { stroke: #34d399; }
+        .msg-line-std { stroke: #38bdf8; }
+        .msg-text-green { fill: #6ee7b7; }
+        .msg-text-std { fill: #cbd5e1; }
+      }
+    </style>
+    <marker id="arr-green" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#10b981" />
+    </marker>
+    <marker id="arr-std" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#0284c7" />
+    </marker>
+  </defs>
+
+  <text x="470" y="32" text-anchor="middle" class="text-title" font-size="18">Sequence 2.2.5: Tier 3 OS Sandbox Mount &amp; Execution Spawn Phase</text>
+
+  <line x1="80" y1="80" x2="80" y2="280" class="lifeline" />
+  <rect x="25" y="50" width="110" height="30" rx="6" class="actor-box" />
+  <text x="80" y="70" text-anchor="middle" class="text-actor" font-size="11">SafetyGate</text>
+
+  <line x1="280" y1="80" x2="280" y2="280" class="lifeline" />
+  <rect x="225" y="50" width="110" height="30" rx="6" class="actor-box" />
+  <text x="280" y="70" text-anchor="middle" class="text-actor" font-size="11">MountPlan</text>
+
+  <line x1="480" y1="80" x2="480" y2="280" class="lifeline" />
+  <rect x="425" y="50" width="110" height="30" rx="6" class="actor-box" />
+  <text x="480" y="70" text-anchor="middle" class="text-actor" font-size="11">Runtime</text>
+
+  <line x1="680" y1="80" x2="680" y2="280" class="lifeline" />
+  <rect x="615" y="50" width="130" height="30" rx="6" class="actor-box" stroke="#059669" />
+  <text x="680" y="70" text-anchor="middle" class="text-actor" font-size="11">bwrap-hardened</text>
+
+  <line x1="860" y1="80" x2="860" y2="280" class="lifeline" />
+  <rect x="790" y="50" width="140" height="30" rx="6" class="actor-box" />
+  <text x="860" y="70" text-anchor="middle" class="text-actor" font-size="11">Sandboxed Child (bash)</text>
+
+  <path d="M 80 110 L 280 110" fill="none" class="msg-line-std" marker-end="url(#arr-std)" />
+  <text x="180" y="103" text-anchor="middle" class="msg-text-std">1. Build Mount Plan &amp; Ephemeral Ticket</text>
+
+  <path d="M 280 140 L 80 140" fill="none" stroke="#64748b" stroke-width="1.5" stroke-dasharray="3,3" />
+  <text x="180" y="133" text-anchor="middle" class="msg-text-std">Validated Mount Operations</text>
+
+  <path d="M 80 170 L 480 170" fill="none" class="msg-line-green" marker-end="url(#arr-green)" />
+  <text x="280" y="163" text-anchor="middle" class="msg-text-green">2. Claim Single-Use Permit &amp; Trigger Spawn</text>
+
+  <path d="M 480 200 L 680 200" fill="none" class="msg-line-green" marker-end="url(#arr-green)" />
+  <text x="580" y="193" text-anchor="middle" class="msg-text-green">3. Fork Launcher &amp; Apply Seccomp Descriptor</text>
+
+  <path d="M 680 230 L 860 230" fill="none" class="msg-line-green" marker-end="url(#arr-green)" />
+  <text x="770" y="223" text-anchor="middle" class="msg-text-green">4. Restricted Child Applies Landlock &amp; Execs</text>
+
+  <path d="M 860 260 L 80 260" fill="none" stroke="#64748b" stroke-width="1.5" stroke-dasharray="3,3" />
+  <text x="470" y="253" text-anchor="middle" class="msg-text-std">5. Return Sandbox Output Payload</text>
+</svg>

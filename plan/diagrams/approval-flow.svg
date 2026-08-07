@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 220" width="100%" height="100%" style="font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <defs>
+    <style>
+      .text-title { fill: #0f172a; font-weight: 800; }
+      .box-prompt { fill: #fffbe3; stroke: #f59e0b; stroke-width: 1.5; }
+      .box-opt { fill: #f8fafc; stroke: #cbd5e1; stroke-width: 1.5; }
+      .box-out { fill: #f0fdf4; stroke: #10b981; stroke-width: 1.5; }
+
+      .text-prompt { fill: #b45309; font-weight: 700; font-size: 13px; }
+      .text-opt { fill: #0f172a; font-weight: 700; font-size: 12px; }
+      .text-out { fill: #047857; font-weight: 600; font-size: 11px; }
+
+      @media (prefers-color-scheme: dark) {
+        .text-title { fill: #f8fafc; }
+        .box-prompt { fill: #291e0b; stroke: #f59e0b; }
+        .box-opt { fill: #1e293b; stroke: #334155; }
+        .box-out { fill: #064e3b; stroke: #10b981; }
+
+        .text-prompt { fill: #fbbf24; }
+        .text-opt { fill: #f8fafc; }
+        .text-out { fill: #a7f3d0; }
+      }
+    </style>
+    <marker id="arr-amber" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#f59e0b" />
+    </marker>
+    <marker id="arr-green" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#10b981" />
+    </marker>
+  </defs>
+
+  <text x="440" y="28" text-anchor="middle" class="text-title" font-size="17">Interactive Human Approval Workflow</text>
+
+  <!-- Prompt Box -->
+  <rect x="280" y="45" width="320" height="36" rx="6" class="box-prompt" />
+  <text x="440" y="68" text-anchor="middle" class="text-prompt">Human Approval Prompt Offered</text>
+
+  <!-- Arrows down -->
+  <path d="M 320 81 L 150 115" fill="none" stroke="#f59e0b" stroke-width="1.8" marker-end="url(#arr-amber)" />
+  <path d="M 440 81 L 440 115" fill="none" stroke="#f59e0b" stroke-width="1.8" marker-end="url(#arr-amber)" />
+  <path d="M 560 81 L 730 115" fill="none" stroke="#f59e0b" stroke-width="1.8" marker-end="url(#arr-amber)" />
+
+  <!-- Option 1 -->
+  <rect x="40" y="118" width="220" height="34" rx="6" class="box-opt" />
+  <text x="150" y="139" text-anchor="middle" class="text-opt">Approve Once</text>
+
+  <!-- Option 2 -->
+  <rect x="330" y="118" width="220" height="34" rx="6" class="box-opt" />
+  <text x="440" y="139" text-anchor="middle" class="text-opt">Approve Session Rule</text>
+
+  <!-- Option 3 -->
+  <rect x="620" y="118" width="220" height="34" rx="6" class="box-opt" />
+  <text x="730" y="139" text-anchor="middle" class="text-opt">Save Pattern to Policy</text>
+
+  <!-- Arrows to outcome -->
+  <path d="M 150 152 L 150 178" fill="none" stroke="#10b981" stroke-width="1.8" marker-end="url(#arr-green)" />
+  <path d="M 440 152 L 440 178" fill="none" stroke="#10b981" stroke-width="1.8" marker-end="url(#arr-green)" />
+  <path d="M 730 152 L 730 178" fill="none" stroke="#10b981" stroke-width="1.8" marker-end="url(#arr-green)" />
+
+  <!-- Outcome 1 -->
+  <rect x="40" y="180" width="220" height="32" rx="6" class="box-out" />
+  <text x="150" y="200" text-anchor="middle" class="text-out">Single-Use Permit</text>
+
+  <!-- Outcome 2 -->
+  <rect x="330" y="180" width="220" height="32" rx="6" class="box-out" />
+  <text x="440" y="200" text-anchor="middle" class="text-out">In-Memory Policy Swap</text>
+
+  <!-- Outcome 3 -->
+  <rect x="620" y="180" width="220" height="32" rx="6" class="box-out" />
+  <text x="730" y="200" text-anchor="middle" class="text-out">POSIX Lock &amp; Atomic Rename</text>
+</svg>

@@ -1,0 +1,178 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 780" width="100%" height="100%" style="font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <defs>
+    <style>
+      .text-title { fill: #0f172a; font-weight: 800; }
+      .text-subtitle { fill: #475569; }
+      .text-actor { fill: #0f172a; font-weight: 700; }
+      .actor-box { fill: #f1f5f9; stroke: #0284c7; stroke-width: 1.5; }
+      .lifeline { stroke: #cbd5e1; stroke-width: 1.5; stroke-dasharray: 4,4; }
+      
+      .msg-line { stroke: #0284c7; stroke-width: 1.8; }
+      .msg-line-return { stroke: #64748b; stroke-width: 1.5; stroke-dasharray: 3,3; }
+      .msg-line-green { stroke: #10b981; stroke-width: 2; }
+      .msg-line-red { stroke: #ef4444; stroke-width: 2; }
+      .msg-line-purple { stroke: #8b5cf6; stroke-width: 1.8; }
+      .msg-line-amber { stroke: #f59e0b; stroke-width: 1.8; }
+
+      .msg-text { fill: #334155; font-size: 11px; font-weight: 600; }
+      .msg-text-green { fill: #047857; font-size: 11px; font-weight: 700; }
+      .msg-text-red { fill: #b91c1c; font-size: 11px; font-weight: 700; }
+
+      .box-route-a { fill: #f0fdf4; stroke: #10b981; stroke-width: 1; }
+      .box-route-b { fill: #fef2f2; stroke: #ef4444; stroke-width: 1; }
+      .box-route-c { fill: #faf5ff; stroke: #8b5cf6; stroke-width: 1; }
+      .box-route-d { fill: #fffbe3; stroke: #f59e0b; stroke-width: 1; }
+
+      @media (prefers-color-scheme: dark) {
+        .text-title { fill: #f8fafc; }
+        .text-subtitle { fill: #94a3b8; }
+        .text-actor { fill: #f8fafc; }
+        .actor-box { fill: #1e293b; stroke: #38bdf8; }
+        .lifeline { stroke: #334155; }
+
+        .msg-line { stroke: #38bdf8; }
+        .msg-line-return { stroke: #94a3b8; }
+        .msg-line-green { stroke: #34d399; }
+        .msg-line-red { stroke: #f87171; }
+        .msg-line-purple { stroke: #a78bfa; }
+        .msg-line-amber { stroke: #fbbf24; }
+
+        .msg-text { fill: #cbd5e1; }
+        .msg-text-green { fill: #6ee7b7; }
+        .msg-text-red { fill: #fca5a5; }
+
+        .box-route-a { fill: #064e3b; stroke: #10b981; }
+        .box-route-b { fill: #450a0a; stroke: #ef4444; }
+        .box-route-c { fill: #2e1065; stroke: #a78bfa; }
+        .box-route-d { fill: #291e0b; stroke: #f59e0b; }
+      }
+    </style>
+
+    <marker id="arr-std" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#0284c7" />
+    </marker>
+    <marker id="arr-green" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#10b981" />
+    </marker>
+    <marker id="arr-red" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#ef4444" />
+    </marker>
+    <marker id="arr-purple" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#8b5cf6" />
+    </marker>
+    <marker id="arr-amber" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#f59e0b" />
+    </marker>
+  </defs>
+
+  <text x="590" y="38" text-anchor="middle" class="text-title" font-size="22">Complete Command Execution Sequence Diagram</text>
+  <text x="590" y="60" text-anchor="middle" class="text-subtitle" font-size="13">Modular execution flow across SafetyGate, Tier 1 AST/Policy, Tier 2 LLM Reviewer, Approval UI &amp; Tier 3 bwrap Sandbox</text>
+
+  <!-- Lifelines -->
+  <!-- Tool Call (X: 80) -->
+  <line x1="80" y1="120" x2="80" y2="730" class="lifeline" />
+  <rect x="25" y="80" width="110" height="36" rx="6" class="actor-box" />
+  <text x="80" y="103" text-anchor="middle" class="text-actor" font-size="12">Tool Call</text>
+
+  <!-- SafetyGate (X: 220) -->
+  <line x1="220" y1="120" x2="220" y2="730" class="lifeline" />
+  <rect x="165" y="80" width="110" height="36" rx="6" class="actor-box" />
+  <text x="220" y="103" text-anchor="middle" class="text-actor" font-size="12">SafetyGate</text>
+
+  <!-- BashAST (X: 360) -->
+  <line x1="360" y1="120" x2="360" y2="730" class="lifeline" />
+  <rect x="305" y="80" width="110" height="36" rx="6" class="actor-box" />
+  <text x="360" y="103" text-anchor="middle" class="text-actor" font-size="12">BashAST</text>
+
+  <!-- PolicyEngine (X: 500) -->
+  <line x1="500" y1="120" x2="500" y2="730" class="lifeline" />
+  <rect x="445" y="80" width="110" height="36" rx="6" class="actor-box" />
+  <text x="500" y="103" text-anchor="middle" class="text-actor" font-size="12">PolicyEngine</text>
+
+  <!-- LLMReviewer (X: 650) -->
+  <line x1="650" y1="120" x2="650" y2="730" class="lifeline" />
+  <rect x="595" y="80" width="110" height="36" rx="6" class="actor-box" />
+  <text x="650" y="103" text-anchor="middle" class="text-actor" font-size="12">LLMReviewer</text>
+
+  <!-- ApprovalUI (X: 800) -->
+  <line x1="800" y1="120" x2="800" y2="730" class="lifeline" />
+  <rect x="745" y="80" width="110" height="36" rx="6" class="actor-box" />
+  <text x="800" y="103" text-anchor="middle" class="text-actor" font-size="12">ApprovalUI</text>
+
+  <!-- MountPlan (X: 940) -->
+  <line x1="940" y1="120" x2="940" y2="730" class="lifeline" />
+  <rect x="885" y="80" width="110" height="36" rx="6" class="actor-box" />
+  <text x="940" y="103" text-anchor="middle" class="text-actor" font-size="12">MountPlan</text>
+
+  <!-- bwrap Runtime (X: 1090) -->
+  <line x1="1090" y1="120" x2="1090" y2="730" class="lifeline" />
+  <rect x="1025" y="80" width="130" height="36" rx="6" class="actor-box" />
+  <text x="1090" y="103" text-anchor="middle" class="text-actor" font-size="12">bwrap Runtime</text>
+
+  <!-- Step 1: Execute Call -->
+  <path d="M 80 140 L 220 140" fill="none" class="msg-line" marker-end="url(#arr-std)" />
+  <text x="150" y="133" text-anchor="middle" class="msg-text">1. Execute Call</text>
+
+  <!-- Step 2: AST Decompose -->
+  <path d="M 220 165 L 360 165" fill="none" class="msg-line" marker-end="url(#arr-std)" />
+  <text x="290" y="158" text-anchor="middle" class="msg-text">2. Decompose Command</text>
+
+  <path d="M 360 185 L 220 185" fill="none" class="msg-line-return" />
+  <text x="290" y="180" text-anchor="middle" class="msg-text">AST Nodes &amp; Tokens</text>
+
+  <!-- Step 3: Evaluate Static Policy -->
+  <path d="M 220 210 L 500 210" fill="none" class="msg-line" marker-end="url(#arr-std)" />
+  <text x="360" y="203" text-anchor="middle" class="msg-text">3. Evaluate Tier 1 Policy</text>
+
+  <!-- Branch Box A: Fast-Path Allow -->
+  <rect x="180" y="235" width="340" height="80" rx="6" class="box-route-a" />
+  <text x="190" y="252" font-size="11" font-weight="700" fill="#10b981">ROUTE A: Tier 1 Fast Allow</text>
+  <path d="M 500 268 L 220 268" fill="none" class="msg-line-green" marker-end="url(#arr-green)" />
+  <text x="360" y="263" text-anchor="middle" class="msg-text-green">Static Rule Matched (Allow)</text>
+  <text x="360" y="285" text-anchor="middle" class="msg-text">Issue Permit &amp; Proceed directly to Tier 3 Spawn</text>
+
+  <!-- Branch Box B: Hard Deny -->
+  <rect x="180" y="325" width="340" height="65" rx="6" class="box-route-b" />
+  <text x="190" y="342" font-size="11" font-weight="700" fill="#ef4444">ROUTE B: Hard Deny Veto</text>
+  <path d="M 500 358 L 220 358" fill="none" class="msg-line-red" marker-end="url(#arr-red)" />
+  <text x="360" y="353" text-anchor="middle" class="msg-text-red">Hard Veto Matched (Deny)</text>
+  <path d="M 220 375 L 80 375" fill="none" class="msg-line-red" marker-end="url(#arr-red)" />
+  <text x="150" y="370" text-anchor="middle" class="msg-text-red">Return Blocked Error</text>
+
+  <!-- Branch Box C: Tier 2 LLM Review -->
+  <rect x="180" y="400" width="500" height="95" rx="6" class="box-route-c" />
+  <text x="190" y="417" font-size="11" font-weight="700" fill="#8b5cf6">ROUTE C: Tier 2 LLM Risk Reviewer</text>
+  <path d="M 220 432 L 650 432" fill="none" class="msg-line-purple" marker-end="url(#arr-purple)" />
+  <text x="435" y="427" text-anchor="middle" class="msg-text">Indeterminate Policy → Request LLM Review</text>
+  
+  <path d="M 650 460 L 220 460" fill="none" class="msg-line-green" marker-end="url(#arr-green)" />
+  <text x="435" y="455" text-anchor="middle" class="msg-text-green">LLM Decision: Safe Allow → Issue Permit &amp; Proceed to Tier 3</text>
+
+  <!-- Branch Box D: Interactive Human Prompt -->
+  <rect x="180" y="505" width="650" height="100" rx="6" class="box-route-d" />
+  <text x="190" y="522" font-size="11" font-weight="700" fill="#f59e0b">ROUTE D: Human Review &amp; Rule Learning</text>
+  <path d="M 650 538 L 800 538" fill="none" class="msg-line-amber" marker-end="url(#arr-amber)" />
+  <text x="725" y="533" text-anchor="middle" class="msg-text">LLM Unsafe / Review → Prompt User</text>
+
+  <path d="M 800 565 L 220 565" fill="none" class="msg-line-green" marker-end="url(#arr-green)" />
+  <text x="510" y="560" text-anchor="middle" class="msg-text-green">User Selection (Approve 1x / Session Rule / Save to Policy) → Issue Permit</text>
+
+  <path d="M 800 588 L 500 588" fill="none" class="msg-line-amber" marker-end="url(#arr-amber)" />
+  <text x="650" y="583" text-anchor="middle" class="msg-text">Optionally Persist Learned Rule to PolicyEngine</text>
+
+  <!-- Execution Spawn Phase (Tier 3) -->
+  <rect x="180" y="615" width="940" height="100" rx="6" fill="#064e3b" stroke="#34d399" stroke-width="1.5" />
+  <text x="190" y="632" font-size="12" font-weight="800" fill="#6ee7b7">TIER 3 OS SANDBOX SPAWN PHASE</text>
+
+  <path d="M 220 648 L 940 648" fill="none" class="msg-line" marker-end="url(#arr-std)" />
+  <text x="580" y="643" text-anchor="middle" fill="#a7f3d0" font-size="11" font-weight="600">4. Build Ephemeral Cache Ticket &amp; Mount Plan</text>
+
+  <path d="M 940 670 L 220 670" fill="none" class="msg-line-return" />
+  <text x="580" y="665" text-anchor="middle" fill="#a7f3d0" font-size="11">Validated Mount Operations</text>
+
+  <path d="M 220 692 L 1090 692" fill="none" class="msg-line-green" marker-end="url(#arr-green)" />
+  <text x="655" y="687" text-anchor="middle" fill="#34d399" font-size="11" font-weight="700">5. Claim Single-Use Permit &amp; Fork bwrap-hardened Process (Landlock + Seccomp)</text>
+
+  <path d="M 1090 710 L 80 710" fill="none" class="msg-line-return" />
+  <text x="585" y="705" text-anchor="middle" fill="#a7f3d0" font-size="11">Execution Output Payload</text>
+</svg>

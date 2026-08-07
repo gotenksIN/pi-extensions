@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 440" width="100%" height="100%" style="font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <defs>
+    <style>
+      .text-title { fill: #0f172a; font-weight: 800; }
+      .text-subtitle { fill: #475569; }
+      .layer-bg { fill: #f8fafc; stroke: #cbd5e1; stroke-width: 1.5; }
+      .layer-num { fill: #0284c7; font-weight: 800; font-size: 10px; }
+      .layer-title { fill: #0f172a; font-weight: 700; font-size: 13px; }
+      .layer-desc { fill: #475569; font-size: 11px; }
+
+      @media (prefers-color-scheme: dark) {
+        .text-title { fill: #f8fafc; }
+        .text-subtitle { fill: #94a3b8; }
+        .layer-bg { fill: #1e293b; stroke: #334155; }
+        .layer-num { fill: #38bdf8; }
+        .layer-title { fill: #f8fafc; }
+        .layer-desc { fill: #cbd5e1; }
+      }
+    </style>
+  </defs>
+
+  <text x="480" y="32" text-anchor="middle" class="text-title" font-size="20">7 Defense-In-Depth Security Layers</text>
+  <text x="480" y="52" text-anchor="middle" class="text-subtitle" font-size="12">Multi-tier protection from AST decomposition to OS kernel isolation</text>
+
+  <!-- Layer 1 -->
+  <rect x="30" y="70" width="900" height="44" rx="8" class="layer-bg" />
+  <rect x="42" y="80" width="68" height="24" rx="4" fill="#0284c7" />
+  <text x="76" y="96" text-anchor="middle" fill="#ffffff" font-weight="800" font-size="10">LAYER 1</text>
+  <text x="125" y="96" class="layer-title">AST Command Decomposition &amp; Token Normalization</text>
+  <text x="910" y="96" text-anchor="end" class="layer-desc">tree-sitter-bash WASM parser (bash-ast.ts)</text>
+
+  <!-- Layer 2 -->
+  <rect x="30" y="118" width="900" height="44" rx="8" class="layer-bg" />
+  <rect x="42" y="128" width="68" height="24" rx="4" fill="#0369a1" />
+  <text x="76" y="144" text-anchor="middle" fill="#ffffff" font-weight="800" font-size="10">LAYER 2</text>
+  <text x="125" y="144" class="layer-title">Tier 1 Starlark / Strict JSON Fast-Path Policy Engine</text>
+  <text x="910" y="144" text-anchor="end" class="layer-desc">Zero-latency static evaluation (command-policy.ts)</text>
+
+  <!-- Layer 3 -->
+  <rect x="30" y="166" width="900" height="44" rx="8" class="layer-bg" />
+  <rect x="42" y="176" width="68" height="24" rx="4" fill="#7c3aed" />
+  <text x="76" y="192" text-anchor="middle" fill="#ffffff" font-weight="800" font-size="10">LAYER 3</text>
+  <text x="125" y="192" class="layer-title">Tier 2 Bounded LLM Classifier Risk Reviewer</text>
+  <text x="910" y="192" text-anchor="end" class="layer-desc">openai/gpt-5.6-luna (safety-gate.ts)</text>
+
+  <!-- Layer 4 -->
+  <rect x="30" y="214" width="900" height="44" rx="8" class="layer-bg" />
+  <rect x="42" y="224" width="68" height="24" rx="4" fill="#d97706" />
+  <text x="76" y="240" text-anchor="middle" fill="#ffffff" font-weight="800" font-size="10">LAYER 4</text>
+  <text x="125" y="240" class="layer-title">Interactive Human Review &amp; Rule Learning Broker</text>
+  <text x="910" y="240" text-anchor="end" class="layer-desc">Prompt UI &amp; rule derivation (approval-ui.ts)</text>
+
+  <!-- Layer 5 -->
+  <rect x="30" y="262" width="900" height="44" rx="8" class="layer-bg" />
+  <rect x="42" y="272" width="68" height="24" rx="4" fill="#059669" />
+  <text x="76" y="288" text-anchor="middle" fill="#ffffff" font-weight="800" font-size="10">LAYER 5</text>
+  <text x="125" y="288" class="layer-title">Tier 3 OS Sandbox: Bubblewrap Mount Namespaces</text>
+  <text x="910" y="288" text-anchor="end" class="layer-desc">Read-only root &amp; ephemeral mounts (runtime.ts)</text>
+
+  <!-- Layer 6 -->
+  <rect x="30" y="310" width="900" height="44" rx="8" class="layer-bg" />
+  <rect x="42" y="320" width="68" height="24" rx="4" fill="#047857" />
+  <text x="76" y="336" text-anchor="middle" fill="#ffffff" font-weight="800" font-size="10">LAYER 6</text>
+  <text x="125" y="336" class="layer-title">Tier 3 OS Sandbox: Landlock LSM Ruleset</text>
+  <text x="910" y="336" text-anchor="end" class="layer-desc">Unprivileged path restriction (bwrap-hardened.c)</text>
+
+  <!-- Layer 7 -->
+  <rect x="30" y="358" width="900" height="44" rx="8" class="layer-bg" />
+  <rect x="42" y="368" width="68" height="24" rx="4" fill="#065f46" />
+  <text x="76" y="384" text-anchor="middle" fill="#ffffff" font-weight="800" font-size="10">LAYER 7</text>
+  <text x="125" y="384" class="layer-title">Tier 3 OS Sandbox: Seccomp BPF Syscall Filter</text>
+  <text x="910" y="384" text-anchor="end" class="layer-desc">Kernel syscall restriction (/etc/sandbox-seccomp.bpf)</text>
+</svg>
