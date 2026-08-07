@@ -83,10 +83,9 @@ export interface PersistentGrantResult {
   readonly bashApproved: boolean;
 }
 
-export interface OneShotWriteResult {
-  readonly path: string;
-  readonly authorizedBy: "classifier" | "human";
-}
+export type OneShotWriteResult =
+  | { readonly path: string; readonly prepared: false }
+  | { readonly path: string; readonly prepared: true; readonly authorizedBy: "classifier" | "human" };
 
 export interface ProactiveBashAccess {
   readonly toolCallId: string;
@@ -580,6 +579,7 @@ class Session implements SandboxSession {
     if (typeof data.command !== "string") {
       throw new Error("One-shot sandbox access requires an exact Bash input");
     }
+    if (admission.alreadyWritable) return { path: admission.path, prepared: false };
     const exactBashInput = canonicalJson(proactiveBash.input);
     const evidenceInput = {
       bash: proactiveBash.input,
@@ -636,7 +636,7 @@ class Session implements SandboxSession {
     };
     gate.createFutureBashTicket(proactiveBash.input, state.projectCwd);
     this.futureOneShotWrite = record;
-    return { path: revalidated.path, authorizedBy };
+    return { path: revalidated.path, prepared: true, authorizedBy };
   }
 
   status(): SessionStatusSnapshot {

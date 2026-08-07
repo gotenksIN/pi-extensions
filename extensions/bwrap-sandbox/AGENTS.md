@@ -59,7 +59,8 @@ For a direct write, ask for user approval when policy requires it.
 For `sandbox_access`, require an explicit path and scope and use deterministic grant validation.
 Session mode defaults to the existing human-approved persistent grant flow.
 One-shot mode requires complete Bash input.
-Classify one envelope with that exact input, canonical write path, explicit scope, and one-shot disposition.
+If the resolved path is already writable through active policy or a current grant, return without classification, a future ticket, or a transient mount, and let the later Bash call use normal classification.
+Otherwise, classify one envelope with that exact input, canonical write path, explicit scope, and one-shot disposition.
 Use only recent user-role messages as authorization evidence and omit prior actions from this envelope.
 Automatic one-shot access requires classifier state `ready` and one valid safe reviewer decision.
 All non-allow outcomes use one human prompt for the exact call and path.
@@ -380,6 +381,7 @@ Classifier tests must cover:
 - Exact and parent grant scope selection.
 - Session mode default and one-shot mode Bash requirement.
 - One-shot envelope, ready-reviewer requirement, human fallback, and no persistent grant.
+- Redundant one-shot requests returning without classification, tickets, transient mounts, or approval prompts.
 - One-shot ticket and path claim, consumption, mutation, reuse, lifecycle, and direct-tool isolation.
 - Missing targets with existing parents.
 - Parent scope under `none` and protected runtime paths.

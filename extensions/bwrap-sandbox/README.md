@@ -143,9 +143,13 @@ Direct file tools and user Bash cannot claim this path.
 ### Grant scope
 
 The `sandbox_access` tool has `session` and `one-shot` modes.
+Request it only when active policy and current grants do not already provide the required write access.
+Use active `/sandbox` status for configurable paths instead of assuming default locations.
 The default mode is `session`.
 Session mode preserves the human-approved persistent grant flow.
 One-shot mode requires the `bash` field and never creates a persistent grant.
+If a one-shot request resolves to a path that is already writable, the tool returns without classifier inference, human review, a future Bash ticket, or a transient mount.
+The later Bash call then uses normal safety classification.
 
 The tool also has an `exact` scope and a `parent` scope.
 The default scope is `exact` in session mode.

@@ -138,6 +138,16 @@ test("one-shot exact and parent paths use persistent grant validation", () => {
     validateOneShotGrantRequest("/work/new-file", "parent", context(), grants, missingTarget),
     { path: "/work", alreadyWritable: false },
   );
+  assert.deepEqual(
+    validateOneShotGrantRequest(
+      "/scratch/cache/new-entry",
+      "parent",
+      context({ "/scratch/cache": "write" }),
+      grants,
+      existing,
+    ),
+    { path: "/scratch/cache", alreadyWritable: true },
+  );
   assert.throws(
     () => validateOneShotGrantRequest(
       "/work/new-file",

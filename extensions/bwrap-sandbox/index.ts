@@ -92,10 +92,11 @@ export default function sandboxExtension(pi: ExtensionAPI) {
     name: "sandbox_access",
     label: "Sandbox Write Access",
     description:
-      "Request write access for an explicit path and scope. Session mode asks for a persistent human-approved grant. One-shot mode requires bash and can authorize only that exact future model-generated Bash call from recent user instructions or one human prompt. One-shot access does not create a session grant. Use parent scope for create, delete, rename, and move operations. Policy none entries and protected runtime paths can never be granted.",
-    promptSnippet: "Request a session or one-shot write path before one known model-generated Bash operation",
+      "Request missing write access for an explicit path and scope. Do not request access when active policy or a current grant already provides it. Session mode asks for a persistent human-approved grant. One-shot mode requires bash and can authorize only that exact future model-generated Bash call from recent user instructions or one human prompt. One-shot access does not create a session grant. Use parent scope for create, delete, rename, and move operations. Policy none entries and protected runtime paths can never be granted.",
+    promptSnippet: "Request a session or one-shot write path only when current sandbox access is insufficient",
     promptGuidelines: [
-      "Request access before an operation when its required write path and scope are already known. Use one-shot mode with the exact Bash input for one known model-generated Bash call.",
+      "Request access only when active policy and current grants do not already provide all required write access. Use active sandbox status for configurable paths and do not assume default locations.",
+      "When access is missing and the required write path and scope are known, use one-shot mode with the exact Bash input for one known model-generated Bash call.",
       "Use exact scope for content changes to an existing path.",
       "Use parent scope for operations that create, delete, rename, or move a directory entry. Do not grant the exact file first because an exact bind mount cannot be deleted or renamed during that session.",
       "Supply path and scope explicitly. Do not infer them from shell or Git commands.",
@@ -126,12 +127,21 @@ export default function sandboxExtension(pi: ExtensionAPI) {
           scope,
           { toolCallId: id, input: params.bash, ctx },
         );
+        if (!result.prepared) {
+          return {
+            content: [{
+              type: "text",
+              text: `${result.path} is already writable. Run the Bash input normally so it receives normal safety classification.`,
+            }],
+            details: { path: result.path, mode, scope, prepared: false },
+          };
+        }
         return {
           content: [{
             type: "text",
             text: `Prepared one-shot write access for ${result.path}. Run the exact Bash input next. The path is not a session grant.`,
           }],
-          details: { path: result.path, mode, scope, authorizedBy: result.authorizedBy },
+          details: { path: result.path, mode, scope, prepared: true, authorizedBy: result.authorizedBy },
         };
       }
 
