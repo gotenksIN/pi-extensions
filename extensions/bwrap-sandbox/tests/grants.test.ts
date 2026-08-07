@@ -3,6 +3,7 @@ import {
   emptyApprovedGrants,
   validateDirectWrite,
   validateOneShotGrantRequest,
+  validateOneShotGrantRequests,
   validatePersistentGrant,
   validatePersistentGrantRequest,
   type GrantContext,
@@ -167,5 +168,99 @@ test("one-shot exact and parent paths use persistent grant validation", () => {
       existing,
     ),
     /permanently denies/,
+  );
+});
+
+test("one-shot path sets validate atomically and preserve request order", () => {
+  const admissions = validateOneShotGrantRequests(
+    [
+      { path: "/cache/compiler", scope: "exact" },
+      { path: "/modules/new-entry", scope: "parent" },
+    ],
+    context({ "/cache/compiler": "write" }),
+    emptyApprovedGrants(),
+    existing,
+  );
+  assert.deepEqual(admissions, [
+    {
+      requestedPath: "/cache/compiler",
+      scope: "exact",
+      path: "/cache/compiler",
+      alreadyWritable: true,
+    },
+    {
+      requestedPath: "/modules/new-entry",
+      scope: "parent",
+      path: "/modules",
+      alreadyWritable: false,
+    },
+  ]);
+
+  assert.throws(
+    () => validateOneShotGrantRequests(
+      [
+        { path: "/cache/compiler", scope: "exact" },
+        { path: "/work/secret", scope: "exact" },
+      ],
+      context({ "/work/secret": "none" }),
+      emptyApprovedGrants(),
+      existing,
+    ),
+    /permanently denies/,
+  );
+});
+
+test("one-shot path sets reject malformed entries, duplicates, overlaps, and excessive entries", () => {
+  const grants = emptyApprovedGrants();
+  assert.throws(
+    () => validateOneShotGrantRequests(
+      [{ path: "/cache/compiler", scope: "invalid" as unknown as "exact" }],
+      context(),
+      grants,
+      existing,
+    ),
+    /invalid scope/,
+  );
+  assert.throws(
+    () => validateOneShotGrantRequests(
+      [{ path: "", scope: "exact" }],
+      context(),
+      grants,
+      existing,
+    ),
+    /non-empty string/,
+  );
+  assert.throws(
+    () => validateOneShotGrantRequests(
+      [
+        { path: "/cache/first", scope: "parent" },
+        { path: "/cache/second", scope: "parent" },
+      ],
+      context(),
+      grants,
+      existing,
+    ),
+    /duplicate path/,
+  );
+  assert.throws(
+    () => validateOneShotGrantRequests(
+      [
+        { path: "/cache", scope: "exact" },
+        { path: "/cache/compiler", scope: "exact" },
+      ],
+      context(),
+      grants,
+      existing,
+    ),
+    /overlapping paths/,
+  );
+  assert.throws(
+    () => validateOneShotGrantRequests(
+      Array.from({ length: 17 }, (_, index) => ({ path: `/cache/${index}`, scope: "exact" as const })),
+      context(),
+      grants,
+      existing,
+    ),
+    /at most 16 paths/,
   );
 });

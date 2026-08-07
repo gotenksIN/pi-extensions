@@ -10,10 +10,12 @@ import {
   approvedGrantPaths,
   emptyApprovedGrants,
   validateDirectWrite,
-  validateOneShotGrantRequest,
+  validateOneShotGrantRequests,
   validatePersistentGrantRequest,
   type GrantContext,
   type GrantScope,
+  type OneShotGrantRequest,
+  type OneShotWriteAdmission,
 } from "./grants.ts";
 import {
   buildDirectAccessAssessment,
@@ -83,9 +85,20 @@ export interface PersistentGrantResult {
   readonly bashApproved: boolean;
 }
 
+export interface OneShotWritePathResult {
+  readonly requestedPath: string;
+  readonly scope: GrantScope;
+  readonly path: string;
+  readonly transient: boolean;
+}
+
 export type OneShotWriteResult =
-  | { readonly path: string; readonly prepared: false }
-  | { readonly path: string; readonly prepared: true; readonly authorizedBy: "classifier" | "human" };
+  | { readonly paths: readonly OneShotWritePathResult[]; readonly prepared: false }
+  | {
+    readonly paths: readonly OneShotWritePathResult[];
+    readonly prepared: true;
+    readonly authorizedBy: "classifier" | "human";
+  };
 
 export interface ProactiveBashAccess {
   readonly toolCallId: string;
@@ -128,9 +141,8 @@ export interface SandboxSession {
     scope: GrantScope,
     proactiveBash?: ProactiveBashAccess,
   ): Promise<PersistentGrantResult>;
-  requestOneShotWrite(
-    rawPath: string,
-    scope: GrantScope,
+  requestOneShotWrites(
+    requests: readonly OneShotGrantRequest[],
     proactiveBash: ProactiveBashAccess,
   ): Promise<OneShotWriteResult>;
   status(): SessionStatusSnapshot;
@@ -147,7 +159,7 @@ function unavailableOperations(reason: string): BashOperations {
 }
 
 interface OneShotWriteRecord {
-  readonly path: string;
+  readonly paths: readonly string[];
   readonly cwd: string;
   readonly digest: string;
   readonly generation: number;
@@ -481,7 +493,7 @@ class Session implements SandboxSession {
     ) {
       throw new Error("One-shot write access does not match the final Bash input");
     }
-    return [claimed.path];
+    return claimed.paths;
   }
 
   recordBashResult(input: unknown, exitCode: number | null): void {
@@ -564,29 +576,40 @@ class Session implements SandboxSession {
     return { path: admission.path, granted: true, bashApproved };
   }
 
-  async requestOneShotWrite(
-    rawPath: string,
-    scope: GrantScope,
+  async requestOneShotWrites(
+    requests: readonly OneShotGrantRequest[],
     proactiveBash: ProactiveBashAccess,
   ): Promise<OneShotWriteResult> {
     let state = this.ready();
     const gate = this.safetyGate;
     if (!gate) throw new Error("Safety classification is unavailable");
-    const admission = validateOneShotGrantRequest(rawPath, scope, this.grantContext(state), state.grants);
+    const admissions = validateOneShotGrantRequests(requests, this.grantContext(state), state.grants);
     const data = proactiveBash.input && typeof proactiveBash.input === "object"
       ? proactiveBash.input as Record<string, unknown>
       : {};
     if (typeof data.command !== "string") {
       throw new Error("One-shot sandbox access requires an exact Bash input");
     }
-    if (admission.alreadyWritable) return { path: admission.path, prepared: false };
+    const pathResults = (items: readonly OneShotWriteAdmission[]): readonly OneShotWritePathResult[] => (
+      items.map((item) => ({
+        requestedPath: item.requestedPath,
+        scope: item.scope,
+        path: item.path,
+        transient: !item.alreadyWritable,
+      }))
+    );
+    const transientAdmissions = admissions.filter((admission) => !admission.alreadyWritable);
+    if (transientAdmissions.length === 0) return { paths: pathResults(admissions), prepared: false };
+
     const exactBashInput = canonicalJson(proactiveBash.input);
     const evidenceInput = {
       bash: proactiveBash.input,
       filesystemAccess: {
-        canonicalWritePath: admission.path,
         disposition: "one-shot",
-        scope,
+        writes: transientAdmissions.map((admission) => ({
+          canonicalWritePath: admission.path,
+          scope: admission.scope,
+        })),
       },
     };
     const result = await gate.classify({
@@ -603,20 +626,24 @@ class Session implements SandboxSession {
 
     let authorizedBy: "classifier" | "human" = "classifier";
     if (!result.allowed) {
+      const writeLines = admissions.flatMap((admission, index) => [
+        `Write ${index + 1} requested path: ${admission.requestedPath}`,
+        `Write ${index + 1} access scope: ${admission.scope}`,
+        `Write ${index + 1} resolved path: ${admission.path}`,
+        `Write ${index + 1} needs transient access: ${!admission.alreadyWritable}`,
+      ]);
       const choice = await this.approval.request(
         [
           "One-shot filesystem access requires human review.",
-          `Requested path: ${rawPath}`,
-          `Access scope: ${scope}`,
-          `Resolved write path: ${admission.path}`,
+          ...writeLines,
           `Exact Bash input: ${exactBashInput}`,
           `Classifier result: ${result.reason ?? "review required"}`,
-          "This approval applies to this exact Bash call and path once. It does not create a session grant. Bubblewrap remains active.",
+          "This approval applies to this exact Bash call and write-path set once. It does not create a session grant. Bubblewrap remains active.",
         ].join("\n"),
         ["No - block", "Yes - allow this exact Bash call with one-shot write access"],
       );
       if (choice !== "Yes - allow this exact Bash call with one-shot write access") {
-        throw new Error(`Sandbox one-shot access denied for ${admission.path}`);
+        throw new Error(`Sandbox one-shot access denied for ${transientAdmissions.map(({ path }) => path).join(", ")}`);
       }
       authorizedBy = "human";
     }
@@ -624,19 +651,25 @@ class Session implements SandboxSession {
 
     state = this.ready();
     if (this.safetyGate !== gate) throw new Error("One-shot sandbox approval expired because the session changed");
-    const revalidated = validateOneShotGrantRequest(rawPath, scope, this.grantContext(state), state.grants);
-    if (revalidated.path !== admission.path) {
-      throw new Error(`One-shot sandbox mount source changed after approval: ${admission.path}`);
-    }
+    const revalidated = validateOneShotGrantRequests(requests, this.grantContext(state), state.grants);
+    const changed = revalidated.length !== admissions.length || revalidated.some((item, index) => {
+      const original = admissions[index];
+      return item.requestedPath !== original.requestedPath
+        || item.scope !== original.scope
+        || item.path !== original.path
+        || item.alreadyWritable !== original.alreadyWritable;
+    });
+    if (changed) throw new Error("One-shot sandbox write paths changed after approval");
+
     const record: OneShotWriteRecord = {
-      path: revalidated.path,
+      paths: revalidated.filter((admission) => !admission.alreadyWritable).map(({ path }) => path),
       cwd: state.projectCwd,
       digest: actionDigest({ tool: "bash", input: proactiveBash.input, cwd: state.projectCwd }),
       generation: this.lifecycleGeneration,
     };
     gate.createFutureBashTicket(proactiveBash.input, state.projectCwd);
     this.futureOneShotWrite = record;
-    return { path: revalidated.path, prepared: true, authorizedBy };
+    return { paths: pathResults(revalidated), prepared: true, authorizedBy };
   }
 
   status(): SessionStatusSnapshot {

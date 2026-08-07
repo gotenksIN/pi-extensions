@@ -277,7 +277,7 @@ test("a broad grant cannot override a denied descendant or create a socket capab
   assert.equal(plan.some((operation) => operation.kind === "bind" && operation.sourceType === "socket"), false);
 });
 
-test("one transient path is writable for one mount plan while none remains final", () => {
+test("multiple transient paths are writable for one mount plan while none remains final", () => {
   const policy = { "/workspace": "read", "/workspace/secret": "none" } as const;
   const plan = createMountPlan(
     policy,
@@ -285,7 +285,7 @@ test("one transient path is writable for one mount plan while none remains final
     inspect({}),
     true,
     false,
-    ["/workspace/.git", "/workspace/secret"],
+    ["/workspace/.git", "/home/user/.cache/compiler", "/workspace/secret"],
   );
   assert.deepEqual(
     plan.find((operation) => operation.kind === "bind" && operation.destination === "/workspace/.git"),
@@ -293,6 +293,16 @@ test("one transient path is writable for one mount plan while none remains final
       kind: "bind",
       source: "/workspace/.git",
       destination: "/workspace/.git",
+      sourceType: "directory",
+      writable: true,
+    },
+  );
+  assert.deepEqual(
+    plan.find((operation) => operation.kind === "bind" && operation.destination === "/home/user/.cache/compiler"),
+    {
+      kind: "bind",
+      source: "/home/user/.cache/compiler",
+      destination: "/home/user/.cache/compiler",
       sourceType: "directory",
       writable: true,
     },

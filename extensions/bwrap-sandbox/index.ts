@@ -92,17 +92,25 @@ export default function sandboxExtension(pi: ExtensionAPI) {
     name: "sandbox_access",
     label: "Sandbox Write Access",
     description:
-      "Request missing write access for an explicit path and scope. Do not request access when active policy or a current grant already provides it. Session mode asks for a persistent human-approved grant. One-shot mode requires bash and can authorize only that exact future model-generated Bash call from recent user instructions or one human prompt. One-shot access does not create a session grant. Use parent scope for create, delete, rename, and move operations. Policy none entries and protected runtime paths can never be granted.",
-    promptSnippet: "Request a session or one-shot write path only when current sandbox access is insufficient",
+      "Request missing write access for explicit paths and scopes. Do not request access when active policy or a current grant already provides it. Session mode accepts one path and asks for a persistent human-approved grant. One-shot mode requires bash and accepts either one path or an atomic paths list for that exact future model-generated Bash call. One-shot access does not create a session grant. Policy none entries and protected runtime paths can never be granted.",
+    promptSnippet: "Request session or atomic one-shot write paths only when current sandbox access is insufficient",
     promptGuidelines: [
-      "Request access only when active policy and current grants do not already provide all required write access. Use active sandbox status for configurable paths and do not assume default locations.",
-      "When access is missing and the required write path and scope are known, use one-shot mode with the exact Bash input for one known model-generated Bash call.",
+      "Request access only when active policy and current grants do not already provide all required write access. Account for explicit outputs and implicit tool cache paths.",
+      "For one known Bash call, use one-shot mode and supply every required path with an explicit exact or parent scope. Use paths for multiple atomic writes.",
       "Use exact scope for content changes to an existing path.",
       "Use parent scope for operations that create, delete, rename, or move a directory entry. Do not grant the exact file first because an exact bind mount cannot be deleted or renamed during that session.",
-      "Supply path and scope explicitly. Do not infer them from shell or Git commands.",
+      "Supply paths and scopes explicitly. Do not infer them from shell commands or assume configurable default locations.",
     ],
     parameters: Type.Object({
-      path: Type.String({ description: "Target path, relative to the project or absolute. The target can be missing when scope is parent." }),
+      path: Type.Optional(Type.String({ description: "One target path, relative to the project or absolute. The target can be missing when scope is parent." })),
+      paths: Type.Optional(Type.Array(Type.Object({
+        path: Type.String({ description: "Target path, relative to the project or absolute." }),
+        scope: Type.Union([Type.Literal("exact"), Type.Literal("parent")]),
+      }, { additionalProperties: false }), {
+        description: "Atomic one-shot write paths. Each entry requires an explicit scope.",
+        minItems: 1,
+        maxItems: 16,
+      })),
       mode: Type.Optional(Type.Union([
         Type.Literal("session"),
         Type.Literal("one-shot"),
@@ -119,34 +127,53 @@ export default function sandboxExtension(pi: ExtensionAPI) {
     async execute(id, params, _signal, _onUpdate, ctx) {
       const mode = params.mode ?? "session";
       const scope = params.scope ?? "exact";
+      const hasPath = typeof params.path === "string";
+      const hasPaths = Array.isArray(params.paths);
       if (mode === "one-shot") {
-        if (!params.scope) throw new Error("sandbox_access mode one-shot requires an explicit scope");
+        if (hasPath === hasPaths) throw new Error("sandbox_access mode one-shot requires exactly one of path or paths");
         if (!params.bash) throw new Error("sandbox_access mode one-shot requires bash input");
-        const result = await session.requestOneShotWrite(
-          params.path,
-          scope,
+        if (hasPaths && params.scope !== undefined) {
+          throw new Error("sandbox_access paths entries contain their own scopes; do not set top-level scope");
+        }
+        if (hasPath && !params.scope) throw new Error("sandbox_access singular one-shot mode requires an explicit scope");
+        const requests = hasPaths
+          ? params.paths!
+          : [{ path: params.path!, scope: params.scope! }];
+        const result = await session.requestOneShotWrites(
+          requests,
           { toolCallId: id, input: params.bash, ctx },
         );
+        const resolved = result.paths.map(({ requestedPath, path, scope, transient }) => ({
+          requestedPath,
+          path,
+          scope,
+          transient,
+        }));
+        const singularDetails = hasPath && result.paths[0]
+          ? { path: result.paths[0].path, scope: result.paths[0].scope }
+          : {};
         if (!result.prepared) {
           return {
             content: [{
               type: "text",
-              text: `${result.path} is already writable. Run the Bash input normally so it receives normal safety classification.`,
+              text: "All requested paths are already writable. Run the Bash input normally so it receives normal safety classification.",
             }],
-            details: { path: result.path, mode, scope, prepared: false },
+            details: { ...singularDetails, paths: resolved, mode, prepared: false },
           };
         }
         return {
           content: [{
             type: "text",
-            text: `Prepared one-shot write access for ${result.path}. Run the exact Bash input next. The path is not a session grant.`,
+            text: `Prepared ${resolved.filter(({ transient }) => transient).length} one-shot write path(s). Run the exact Bash input next. These paths are not session grants.`,
           }],
-          details: { path: result.path, mode, scope, prepared: true, authorizedBy: result.authorizedBy },
+          details: { ...singularDetails, paths: resolved, mode, prepared: true, authorizedBy: result.authorizedBy },
         };
       }
 
+      if (!hasPath) throw new Error("sandbox_access session mode requires path");
+      if (hasPaths) throw new Error("sandbox_access paths is available only in one-shot mode");
       const result = await session.requestPersistentWrite(
-        params.path,
+        params.path!,
         scope,
         params.bash ? { toolCallId: id, input: params.bash, ctx } : undefined,
       );

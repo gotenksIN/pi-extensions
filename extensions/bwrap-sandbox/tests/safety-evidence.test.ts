@@ -124,6 +124,20 @@ test("classifier policy separates fixed public retrieval from data transmission"
   ]) assert.ok(CLASSIFIER_POLICY.includes(requiredPolicy));
 });
 
+test("classifier policy keeps atomic cache paths explicit and complete", () => {
+  for (const requiredPolicy of [
+    "atomic 'writes' list",
+    "Do not infer, add, widen, drop, or replace a path",
+    "normal tool-managed cache state",
+    "transient permissions end after that command",
+    "normal reuse and tool-managed cleanup",
+    "broad cache roots",
+    "cache poisoning",
+    "must supply every cache path and scope explicitly",
+    "execution of newly downloaded code",
+  ]) assert.ok(CLASSIFIER_POLICY.includes(requiredPolicy));
+});
+
 test("classifier decision validation rejects extra and contradictory fields", () => {
   assert.deepEqual(
     parseClassifierDecision({ decision: "allow", severity: "safe", risks: [], reason: "Routine local read." }),

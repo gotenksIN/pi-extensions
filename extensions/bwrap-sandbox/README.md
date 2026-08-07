@@ -71,13 +71,13 @@ A model-generated Bash call passes through these controls:
 3. Bubblewrap builds the mount plan and starts the Bash process.
 4. If the approved call fails, a later write-grant prompt can also authorize one retry of that exact Bash action.
 
-Before one known Bash call, `sandbox_access` can request `mode: "one-shot"` with an explicit path, scope, and complete Bash input.
-The extension validates the path with the persistent-grant rules.
-It then classifies one envelope that contains the complete Bash input, canonical write path, scope, and one-shot disposition.
+Before one known Bash call, `sandbox_access` can request `mode: "one-shot"` with either one compatible path-and-scope pair or an atomic `paths` list, plus the complete Bash input.
+The extension validates every path with the persistent-grant rules, rejects duplicates and overlaps, and limits the list to 16 entries.
+It removes already-writable entries from the transient set and then classifies one envelope that contains the complete Bash input, all remaining canonical write paths and scopes, and one-shot disposition.
 Only recent user-role messages provide authorization evidence for this request.
-One valid safe reviewer decision can authorize it automatically.
-Every result that is not a valid safe allow requires one human decision for that exact path and Bash call.
-The resulting write path is mounted for only the matching next model-generated Bash spawn.
+One valid safe reviewer decision can authorize the complete set automatically.
+Every result that is not a valid safe allow requires one human decision for that exact path set and Bash call.
+The resulting write paths are mounted together for only the matching next model-generated Bash spawn.
 
 Direct `read`, `grep`, `write`, and `edit` calls use deterministic path policy first.
 They then use local path, query, payload, and scan-completeness indicators.
@@ -96,9 +96,9 @@ Automatic execution of a direct content-access call requires a clean and complet
 A human review approval is single-use and applies to one exact tool call.
 A failed approved Bash call can become a pending retry only after a later grant prompt displays the exact command and the human selects the combined grant-and-retry choice.
 The retry uses a new single-use execution permit and cannot survive a changed command, working directory, lifecycle, or intervening Bash authorization.
-A classifier decision cannot select, infer, or widen a filesystem path.
-A valid safe reviewer decision can authorize only the explicit, deterministically validated one-shot path in the same authorization envelope.
-A human one-shot approval has the same path limit.
+A classifier decision cannot select, infer, add, drop, replace, or widen a filesystem path.
+A valid safe reviewer decision can authorize only the explicit, deterministically validated one-shot path set in the same authorization envelope.
+A human one-shot approval has the same set limit.
 Neither result creates a session grant or runtime capability.
 It cannot bypass a Bubblewrap error.
 A session grant or one-shot path cannot override `none` or a protected runtime path.
@@ -133,12 +133,12 @@ A grant stays active for the current session only.
 A grant does not override an effective `none` rule.
 A grant does not apply to protected runtime resources.
 
-A one-shot write path uses the same canonical source, existing-source, `none`, and protected-runtime validation.
-It stays separate from session grants and does not appear in `/sandbox` status.
+Each one-shot write path uses the same canonical source, existing-source, `none`, and protected-runtime validation.
+The atomic set stays separate from session grants and does not appear in `/sandbox` status.
 It is bound to one complete Bash input, including its timeout, the project working directory, and the current lifecycle.
-The extension consumes it before one matching spawn.
-Changed input, reuse, or a lifecycle change gives no transient path and returns the call to normal Bash authorization.
-Direct file tools and user Bash cannot claim this path.
+The extension consumes the complete set before one matching spawn.
+Changed input, reuse, or a lifecycle change gives no transient paths and returns the call to normal Bash authorization.
+Direct file tools and user Bash cannot claim this set.
 
 ### Grant scope
 
@@ -148,12 +148,14 @@ Use active `/sandbox` status for configurable paths instead of assuming default 
 The default mode is `session`.
 Session mode preserves the human-approved persistent grant flow.
 One-shot mode requires the `bash` field and never creates a persistent grant.
-If a one-shot request resolves to a path that is already writable, the tool returns without classifier inference, human review, a future Bash ticket, or a transient mount.
+It accepts the existing singular `path` plus top-level `scope` form or a plural `paths` list with an explicit scope in each entry.
+Supplying both forms, neither form, a top-level scope with `paths`, more than 16 entries, canonical duplicates, or ancestor and descendant overlaps is invalid.
+If all one-shot paths are already writable, the tool returns without classifier inference, human review, a future Bash ticket, or transient mounts.
 The later Bash call then uses normal safety classification.
 
 The tool also has an `exact` scope and a `parent` scope.
 The default scope is `exact` in session mode.
-One-shot mode requires an explicit scope.
+The singular one-shot form requires a top-level scope, and every plural entry requires its own scope.
 Use `exact` to change the content of an existing file or directory.
 The exact path becomes a Bubblewrap bind mount.
 
@@ -218,7 +220,24 @@ Example for one exact future Bash call without a session grant:
 }
 ```
 
+Example for one exact build that needs two normal tool caches:
+
+```json
+{
+  "mode": "one-shot",
+  "paths": [
+    { "path": "/home/user/.cache/compiler", "scope": "exact" },
+    { "path": "/home/user/.cache/dependencies", "scope": "exact" }
+  ],
+  "bash": {
+    "command": "tool build",
+    "timeout": 30
+  }
+}
+```
+
 The later Bash call must use the same complete input, including `timeout` when specified.
+The transient write permissions end after that call, but cache content remains for normal tool reuse and cleanup.
 
 ## Mount order
 
@@ -228,7 +247,7 @@ The mount plan uses this order:
 2. Create fresh `/dev` and `/proc` mounts.
 3. Install trusted runtime resource masks.
 4. Apply filesystem policy mounts.
-5. Apply approved session write grants and the optional consumed one-shot write path.
+5. Apply approved session write grants and the optional consumed one-shot write-path set.
 6. Apply the private temporary directory and SSH agent capability.
 7. Remount required parent paths as read-only.
 
@@ -315,7 +334,7 @@ If safety review and write approval are both required, the extension uses one co
 The user can allow one operation or add a session grant.
 A proactive `sandbox_access` call in session mode can include one exact future Bash input.
 The extension classifies that input before the grant prompt, and the human can grant the resolved path and authorize that exact Bash call with one choice.
-In one-shot mode, the extension classifies the complete Bash-and-path envelope and creates no session grant.
+In one-shot mode, the extension classifies the complete Bash-and-path-set envelope and creates no session grant.
 A valid automatic decision needs a ready reviewer and one `allow` decision with `safe` severity and no risks.
 Disabled, unavailable, review, invalid, timeout, cancellation, and technical results cannot create automatic filesystem access.
 A human can approve the exact one-shot request with one combined prompt.
@@ -348,7 +367,11 @@ Custom destinations or transports, supplied authentication data, uploads, remote
 Reads that are restricted to the documented `PI_CODING_AGENT`, `PI_SESSION_ID`, `PI_SESSION_FILE`, `PI_PROVIDER`, `PI_MODEL`, and `PI_REASONING_LEVEL` session metadata are routine.
 This includes exact `env | rg '^PI_'`-style inspection, but it does not include arbitrary environment dumps, provider credential variables, or reading the file named by `PI_SESSION_FILE`.
 Bounded temporary processing of public or local read-only research data in the configured active sandbox directory is also routine when it does not modify project files, external services, credentials, or secrets.
-A read-only research request permits this scratch processing unless it explicitly forbids temporary files.
+An atomic classifier-approved one-shot set can let a tool use its normal narrow compiler, package-manager, dependency, or build cache paths outside that directory for one exact command.
+The transient write permissions end after the command, but cache content remains for normal reuse and tool-managed cleanup.
+Every cache path and scope must be explicit.
+Broad cache roots, secret stores, unrelated writes, cache poisoning, external mutation, and execution of newly downloaded code still require review.
+A read-only research request permits scratch processing unless it explicitly forbids temporary files.
 The classifier assesses the exact current action.
 It can use recent user-role messages as authorization evidence for a matching, narrowly scoped mutation.
 For example, a user request to commit and push the current changes can authorize an ordinary matching commit and push to the configured upstream.
@@ -477,10 +500,10 @@ The permit covers the tool call ID, tool name, final input, working directory, a
 The tool consumes the permit immediately before execution.
 A proactive session write-grant request can classify one exact future Bash input without creating an execution permit or filesystem grant.
 A combined human approval creates the validated grant and one exact future-call ticket.
-A one-shot request creates two independent transient records after one valid safe reviewer decision or one human approval: an exact future Bash ticket and a validated write-path record.
+A one-shot request creates two independent transient records after one valid safe reviewer decision or one human approval: an exact future Bash ticket and one validated atomic write-path-set record.
 The matching tool call claims both records.
-Permit consumption returns that path only to the Bubblewrap operations object for that one spawn.
-The path is consumed before execution and is never added to session grants or status.
+Permit consumption returns the complete set only to the Bubblewrap operations object for that one spawn.
+The set is consumed before execution and is never added to session grants or status.
 A failed Bash execution can also stage bounded retry metadata for the next write-grant request.
 A combined human grant-and-retry choice converts that metadata into one permit for a new tool call only when the command and working directory still match exactly.
 A missing, changed, expired, or reused permit fails closed.

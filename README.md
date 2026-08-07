@@ -135,7 +135,7 @@ sudo pacman -S bubblewrap
 
 The extension starts from a read-only host root and uses deterministic path and direct secret checks, Bubblewrap mounts, user-approved session grants, exact one-shot write paths, and one classifier reviewer for model-generated Bash.
 The default reviewer is `openai/gpt-5.6-luna` with `low` reasoning.
-The reviewer can use bounded user-role instructions to authorize matching, narrowly scoped Bash mutations and one deterministically validated write path for one exact future Bash call.
+The reviewer can use bounded user-role instructions to authorize matching, narrowly scoped Bash mutations and one deterministically validated atomic write-path set for one exact future Bash call.
 It treats deterministic reads from fixed public remote resources as routine when the request cannot include local, project, environment, credential, secret, proprietary, prior-output, or dynamic data.
 A missing or failed reviewer does not use model fallback and sends the exact action to human review.
 Bubblewrap is the primary security boundary.

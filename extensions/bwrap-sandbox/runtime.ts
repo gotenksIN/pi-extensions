@@ -18,7 +18,7 @@ import {
   deriveCapabilityEnvironment,
   revalidateRuntimeCapabilities,
 } from "./capabilities.ts";
-import { emptyApprovedGrants, validateOneShotGrantRequest } from "./grants.ts";
+import { emptyApprovedGrants, validateOneShotGrantRequests } from "./grants.ts";
 import {
   FRESH_RUNTIME_PATHS,
   validateRuntimePolicy,
@@ -187,15 +187,21 @@ export class BubblewrapRuntime {
   ): { args: string[]; environment: NodeJS.ProcessEnv } {
     if (this.stopped) throw new Error("Bubblewrap runtime has shut down");
     for (const path of grants.paths) validateWritableRuntimePath(path, this.protectedPaths, "subtree");
-    for (const path of transientWritePaths) {
-      const admission = validateOneShotGrantRequest(path, "exact", {
-        cwd: "/",
-        home: "/",
-        policy: this.config.filesystem,
-        protectedPaths: this.protectedPaths,
-      }, grants);
-      if (admission.path !== path) {
-        throw new Error(`One-shot sandbox mount source changed after approval: ${path}`);
+    const transientAdmissions = transientWritePaths.length === 0
+      ? []
+      : validateOneShotGrantRequests(
+        transientWritePaths.map((path) => ({ path, scope: "exact" })),
+        {
+          cwd: "/",
+          home: "/",
+          policy: this.config.filesystem,
+          protectedPaths: this.protectedPaths,
+        },
+        grants,
+      );
+    for (let index = 0; index < transientAdmissions.length; index += 1) {
+      if (transientAdmissions[index].path !== transientWritePaths[index]) {
+        throw new Error(`One-shot sandbox mount source changed after approval: ${transientWritePaths[index]}`);
       }
     }
 

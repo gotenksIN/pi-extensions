@@ -16,7 +16,7 @@ This extension has four security layers:
 Bubblewrap is the primary boundary.
 The classifier is defense in depth.
 No classifier result can select or widen policy, capabilities, grants, or runtime validation.
-A valid safe decision can authorize only the explicit prevalidated one-shot mount path in the same envelope.
+A valid safe decision can authorize only the explicit prevalidated one-shot mount-path set in the same envelope.
 
 The extension also checks Pi file tools that run in the host process.
 These checks are application-level permission logic.
@@ -56,15 +56,17 @@ Scan every structured edit replacement and the legacy single-replacement shape.
 Allow a clean and complete local assessment without provider inference.
 Use only deterministic path policy for `find` and `ls`.
 For a direct write, ask for user approval when policy requires it.
-For `sandbox_access`, require an explicit path and scope and use deterministic grant validation.
-Session mode defaults to the existing human-approved persistent grant flow.
-One-shot mode requires complete Bash input.
-If the resolved path is already writable through active policy or a current grant, return without classification, a future ticket, or a transient mount, and let the later Bash call use normal classification.
-Otherwise, classify one envelope with that exact input, canonical write path, explicit scope, and one-shot disposition.
+For `sandbox_access`, require explicit paths and scopes and use deterministic grant validation.
+Session mode defaults to the existing singular human-approved persistent grant flow.
+One-shot mode requires complete Bash input and accepts either the compatible singular form or an atomic list of up to 16 path-and-scope entries.
+Validate all entries before classification, and reject canonical duplicates and ancestor or descendant overlaps.
+Remove already-writable entries from the transient set while retaining them in the result.
+If all resolved paths are already writable through active policy or current grants, return without classification, a future ticket, or transient mounts, and let the later Bash call use normal classification.
+Otherwise, classify one envelope with that exact input, the complete remaining canonical write-path set, explicit per-entry scopes, and one-shot disposition.
 Use only recent user-role messages as authorization evidence and omit prior actions from this envelope.
 Automatic one-shot access requires classifier state `ready` and one valid safe reviewer decision.
-All non-allow outcomes use one human prompt for the exact call and path.
-The classifier must not select, infer, or widen the path.
+All non-allow outcomes use one human prompt for the exact call and complete path set.
+The classifier must not select, infer, add, drop, replace, or widen a path.
 A user or classifier approval does not skip Bubblewrap.
 
 Trusted `user_bash` and `/sandbox-test` bypass classifier calls.
@@ -82,6 +84,11 @@ Treat reads restricted to `PI_CODING_AGENT`, `PI_SESSION_ID`, `PI_SESSION_FILE`,
 This includes exact `env | rg '^PI_'`-style reads.
 Do not extend this rule to arbitrary environment dumps, provider credential variables, or reading the file named by `PI_SESSION_FILE`.
 Allow bounded scratch writes under the compiled active sandbox directory when they only process public or local read-only research data and do not modify project files, external services, credentials, or secrets.
+Allow an atomic classifier-approved one-shot set of narrow canonical compiler, package-manager, dependency, or build caches when the exact command uses every path only as normal tool-managed cache state.
+Do not require normal caches to be redirected into the active sandbox directory.
+The transient permissions end after the command, but cache content remains available for normal reuse and tool-managed cleanup.
+Keep review for broad cache roots, credential or secret stores, unrelated writes, cache poisoning, external mutation, and execution of newly downloaded code.
+Require every cache path and scope explicitly, and never infer or widen them from shell text.
 Treat read-only research as a restriction on project and external mutation, not on temporary scratch processing, unless the user explicitly forbids temporary files.
 Classify the exact current command.
 Treat standalone `git fetch origin` as routine.
@@ -155,16 +162,17 @@ A persistent grant requires explicit user approval.
 A combined proactive approval can create one validated persistent grant and one exact future Bash ticket.
 Keep the grant and ticket as separate authorization records with independent validation.
 A one-shot request creates no persistent grant.
-After automatic or human authorization, create two independent transient records: an exact future Bash ticket and one canonical write path.
+After automatic or human authorization, create two independent transient records: an exact future Bash ticket and one canonical write-path set.
 Bind both records to the complete Bash input, including timeout, working directory, and lifecycle generation.
 Only the exact next model-generated Bash call can claim them.
-Consume the claimed path before execution and pass it only to the mount plan for that spawn.
-Do not add it to `ApprovedWriteGrants` or session status.
+Consume the complete claimed set before execution and pass it only to the mount plan for that spawn.
+Do not add the paths to `ApprovedWriteGrants` or session status.
 A changed call, reuse, or lifecycle change must receive no transient path and must use normal Bash authorization.
 Direct file tools and `user_bash` cannot claim one-shot access.
 
 `sandbox_access` session mode defaults to `exact` scope.
-One-shot mode requires an explicit scope.
+The singular one-shot form requires an explicit top-level scope.
+The plural one-shot form requires an explicit scope in every path entry and forbids a top-level scope.
 Use exact scope only for content changes to an existing path.
 Use parent scope for create, delete, rename, or move operations.
 Parent scope derives the parent from the requested target before canonical path validation.
@@ -293,7 +301,7 @@ Keep the existing user approval flow for direct writes and `sandbox_access`.
 Preserve exact permit binding and consumption.
 Combine deterministic secret review and direct write approval in one prompt when both apply.
 For proactive session Bash access, classify the exact future Bash input before the prompt, validate the grant independently, and bind one future ticket to the exact input, working directory, and lifecycle.
-For one-shot Bash access, keep the future Bash ticket and transient path independent and bind both to the same exact call.
+For one-shot Bash access, keep the future Bash ticket and atomic transient path set independent and bind both to the same exact call.
 A changed or reused future call must use normal classification.
 
 Direct-tool assessment must stay local and deterministic.
@@ -383,10 +391,12 @@ Classifier tests must cover:
 - Direct tools making no classifier provider calls.
 - Combined direct write and secret review without duplicate prompts.
 - Exact and parent grant scope selection.
-- Session mode default and one-shot mode Bash requirement.
-- One-shot envelope, ready-reviewer requirement, human fallback, and no persistent grant.
-- Redundant one-shot requests returning without classification, tickets, transient mounts, or approval prompts.
-- One-shot ticket and path claim, consumption, mutation, reuse, lifecycle, and direct-tool isolation.
+- Session mode default, singular compatibility, plural one-shot schema, and Bash requirement.
+- One-shot path-count, duplicate, overlap, `none`, protected-path, and atomic validation boundaries.
+- One-shot envelope, complete writes list, ready-reviewer requirement, human fallback, and no persistent grant.
+- Already-writable filtering and all-writable requests returning without classification, tickets, transient mounts, or approval prompts.
+- One-shot ticket and complete path-set claim, consumption, mutation, reuse, lifecycle, and direct-tool isolation.
+- Normal tool-managed cache persistence and reuse with broad-root and cache-poisoning review boundaries.
 - Missing targets with existing parents.
 - Parent scope under `none` and protected runtime paths.
 - Bash permit integrity and classifier ordering.

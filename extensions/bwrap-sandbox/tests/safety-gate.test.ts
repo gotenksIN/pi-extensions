@@ -76,9 +76,11 @@ test("one-shot classification can use a separate envelope and exact future Bash 
   const authorizationEnvelope = {
     bash: input,
     filesystemAccess: {
-      canonicalWritePath: "/work/.git",
       disposition: "one-shot",
-      scope: "exact",
+      writes: [
+        { canonicalWritePath: "/work/.git", scope: "exact" },
+        { canonicalWritePath: "/home/tester/.cache/compiler", scope: "exact" },
+      ],
     },
   };
   const authorization = request(input);
@@ -100,6 +102,8 @@ test("one-shot classification can use a separate envelope and exact future Bash 
   });
   assert.equal(result.allowed, true);
   assert.ok(contexts.every((context) => context.includes("/work/.git")));
+  assert.ok(contexts.every((context) => context.includes("/home/tester/.cache/compiler")));
+  assert.equal(contexts.length, 1);
   assert.ok(contexts.every((context) => context.includes("git commit -m test")));
   assert.ok(contexts.every((context) => context.includes("/home/tester/sandbox")));
   assert.equal(contexts.some((context) => context.includes("prior-action")), false);
