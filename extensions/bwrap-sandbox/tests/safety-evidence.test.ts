@@ -101,11 +101,18 @@ test("classifier policy keeps completed actions separate from the proposed actio
 
 test("classifier policy keeps narrow Git reads separate from risky mutations", () => {
   for (const requiredPolicy of [
-    "Allow a standalone 'git fetch origin'",
-    "Allow a standalone 'git pull --ff-only'",
-    "remote other than 'origin'",
+    "Non-mutating repository inspection is routine",
+    "does not change refs, the index, the worktree, repository configuration, remotes, hooks, or history",
+    "do not form a closed allowlist",
+    "Deterministic read-only remote searches through standard clients",
+    "Allow a standalone fetch through a standard named Git remote",
+    "Allow a standalone 'git pull --ff-only' when it uses the configured upstream or a standard named Git remote",
     "custom refspec",
     "recursive submodule updates",
+    "secret transmission",
+    "chained effects",
+    "arbitrary shell-computed remote names",
+    "remote mutation",
     "effect that the user did not authorize",
   ]) assert.ok(CLASSIFIER_POLICY.includes(requiredPolicy));
 });

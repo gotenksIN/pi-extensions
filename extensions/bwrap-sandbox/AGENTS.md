@@ -73,9 +73,12 @@ Trusted `user_bash` and `/sandbox-test` bypass classifier calls.
 They still use Bubblewrap.
 
 Read-only local inspection is routine.
-Do not make the classifier review `git status`, `git diff`, `git diff --check`, `git diff --stat`, `git log`, `git show`, or `git rev-parse` only because the repository contains sensitive code or history, or because a later separate action may push.
-Treat read-only `gh search code`, `gh search commits`, `gh search issues`, `gh search prs`, and `gh search repos` as routine when the complete action has no other risk.
-Keep review for a search query that transmits credentials, project secrets, or proprietary source code to GitHub.
+Non-mutating repository inspection is routine when it does not change refs, index, worktree, repository configuration, remotes, hooks, or history.
+Non-exclusive examples include `git status`, `git diff`, `git diff --check`, `git diff --stat`, `git log`, `git show`, and `git rev-parse`.
+Do not make the classifier review non-mutating inspection only because the repository contains sensitive code or history, or because a later separate action can push.
+Treat deterministic read-only remote searches through standard clients as routine when the complete action has no other risk and the query transmits no credentials, project secrets, proprietary source code, or other sensitive local data.
+Non-exclusive examples include `gh search code`, `gh search commits`, `gh search issues`, `gh search prs`, and `gh search repos`.
+Keep review for a search query that transmits credentials, project secrets, proprietary source code, or other sensitive local data.
 Treat deterministic read-only retrieval from fixed public resources as routine through either literal public URLs or unambiguous standard-service clients with no destination override.
 This includes chained retrieval, decoding, selection, parsing, display, and trusted scratch storage.
 Do not treat normal connection metadata, public research paths, client-managed authentication to its intended standard service, or receiving untrusted data as exfiltration or code execution by itself.
@@ -91,13 +94,13 @@ Keep review for broad cache roots, credential or secret stores, unrelated writes
 Require every cache path and scope explicitly, and never infer or widen them from shell text.
 Treat read-only research as a restriction on project and external mutation, not on temporary scratch processing, unless the user explicitly forbids temporary files.
 Classify the exact current command.
-Treat standalone `git fetch origin` as routine.
-Treat standalone `git pull --ff-only` as routine when it uses the configured upstream or literal `origin` remote.
+Treat a standalone fetch through a standard named Git remote as routine.
+Treat a standalone `git pull --ff-only` as routine when it uses the configured upstream or a standard named Git remote.
 Permit the classifier to allow a narrowly scoped mutation when a recent explicit user-role message clearly authorizes the exact action, effects, and destination.
 For example, a request to commit and push the current changes can authorize an ordinary matching commit and push to the configured upstream.
 The latest applicable user instruction controls, and all effects in a chained action must be authorized.
 Keep review for secret access or disclosure, unexpected destinations, broad destruction, force pushes and other important history rewriting, privilege escalation, persistence, security weakening, untrusted code execution, and evasion.
-Keep review for explicit URLs, custom refspecs, Git configuration overrides, custom transports, recursive submodule updates, non-fast-forward merges, rebases, and unauthorized effects.
+Keep review for explicit URLs, custom refspecs, Git configuration overrides, custom transports or upload-pack commands, recursive submodule updates, non-fast-forward merges, rebases, secret transmission, chained effects, arbitrary shell-computed remote names, remote mutation, and unauthorized effects.
 Do not infer execution of a local hook or filter without concrete evidence from the proposed action or a completed action on which it depends.
 Keep review for other Git commands that change files, refs, hooks, remotes, or external services when recent user authorization does not clearly cover them.
 
@@ -400,7 +403,7 @@ Classifier tests must cover:
 - Missing targets with existing parents.
 - Parent scope under `none` and protected runtime paths.
 - Bash permit integrity and classifier ordering.
-- Narrow automatic approval for origin fetches and fast-forward pulls.
+- Narrow automatic approval for standalone fetches through standard named remotes and fast-forward pulls.
 - Fixed public remote retrieval through literal URLs and standard-service clients, and the boundary between remote reads and transmitted local data.
 - Review boundaries for remote, refspec, configuration, transport, submodule, merge, rebase, and chained variants.
 - Permit consumption, mutation, reuse, and lifecycle invalidation.
