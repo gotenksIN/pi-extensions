@@ -339,6 +339,12 @@ Read-only local inspection is routine.
 Commands such as `git status`, `git diff`, `git diff --check`, `git diff --stat`, `git log`, `git show`, and `git rev-parse` do not require review only because the repository contains sensitive code or history, or because a later separate action may push.
 Read-only `gh search code`, `gh search commits`, `gh search issues`, `gh search prs`, and `gh search repos` commands are also routine when the complete action has no other risk.
 A search query that contains credentials, project secrets, or proprietary source code still requires review because it transmits that data to GitHub.
+Deterministic read-only retrieval from fixed public resources is routine through either literal public URLs or unambiguous standard-service clients with no destination override.
+This rule includes chained retrieval, decoding, selection, parsing, display, and trusted scratch storage, independently of the client, interpreter, data encoding, or iteration mechanism.
+Normal connection metadata, public research paths, and client-managed authentication to the intended standard service are not exfiltration by themselves.
+Receiving or decoding untrusted remote data is not code execution unless the action executes or loads that data as active code.
+Review remains required when a request can contain local, project, environment, credential, secret, proprietary, prior-output, or dynamic data.
+Custom destinations or transports, supplied authentication data, uploads, remote mutation, private-resource indicators, execution of downloaded content, and unauthorized or destructive local writes also require review.
 Reads that are restricted to the documented `PI_CODING_AGENT`, `PI_SESSION_ID`, `PI_SESSION_FILE`, `PI_PROVIDER`, `PI_MODEL`, and `PI_REASONING_LEVEL` session metadata are routine.
 This includes exact `env | rg '^PI_'`-style inspection, but it does not include arbitrary environment dumps, provider credential variables, or reading the file named by `PI_SESSION_FILE`.
 Bounded temporary processing of public or local read-only research data in the configured active sandbox directory is also routine when it does not modify project files, external services, credentials, or secrets.

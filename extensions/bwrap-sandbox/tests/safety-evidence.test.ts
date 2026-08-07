@@ -110,6 +110,20 @@ test("classifier policy keeps narrow Git reads separate from risky mutations", (
   ]) assert.ok(CLASSIFIER_POLICY.includes(requiredPolicy));
 });
 
+test("classifier policy separates fixed public retrieval from data transmission", () => {
+  for (const requiredPolicy of [
+    "Read-only retrieval of public remote data is routine",
+    "fixed and public",
+    "unambiguous standard-service resource",
+    "regardless of the client, interpreter, data encoding, or iteration mechanism",
+    "Receiving or decoding untrusted remote source",
+    "client-managed authentication",
+    "local or project data",
+    "execution of downloaded content",
+    "hidden or dynamic destinations",
+  ]) assert.ok(CLASSIFIER_POLICY.includes(requiredPolicy));
+});
+
 test("classifier decision validation rejects extra and contradictory fields", () => {
   assert.deepEqual(
     parseClassifierDecision({ decision: "allow", severity: "safe", risks: [], reason: "Routine local read." }),

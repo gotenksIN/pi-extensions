@@ -74,6 +74,10 @@ Read-only local inspection is routine.
 Do not make the classifier review `git status`, `git diff`, `git diff --check`, `git diff --stat`, `git log`, `git show`, or `git rev-parse` only because the repository contains sensitive code or history, or because a later separate action may push.
 Treat read-only `gh search code`, `gh search commits`, `gh search issues`, `gh search prs`, and `gh search repos` as routine when the complete action has no other risk.
 Keep review for a search query that transmits credentials, project secrets, or proprietary source code to GitHub.
+Treat deterministic read-only retrieval from fixed public resources as routine through either literal public URLs or unambiguous standard-service clients with no destination override.
+This includes chained retrieval, decoding, selection, parsing, display, and trusted scratch storage.
+Do not treat normal connection metadata, public research paths, client-managed authentication to its intended standard service, or receiving untrusted data as exfiltration or code execution by itself.
+Keep review for local, project, environment, credential, secret, proprietary, prior-output, or dynamic data in a request, and for custom destinations or transports, supplied authentication data, uploads, remote mutation, private-resource indicators, execution of downloaded content, and unauthorized or destructive local writes.
 Treat reads restricted to `PI_CODING_AGENT`, `PI_SESSION_ID`, `PI_SESSION_FILE`, `PI_PROVIDER`, `PI_MODEL`, and `PI_REASONING_LEVEL` as routine session-metadata inspection.
 This includes exact `env | rg '^PI_'`-style reads.
 Do not extend this rule to arbitrary environment dumps, provider credential variables, or reading the file named by `PI_SESSION_FILE`.
@@ -387,6 +391,7 @@ Classifier tests must cover:
 - Parent scope under `none` and protected runtime paths.
 - Bash permit integrity and classifier ordering.
 - Narrow automatic approval for origin fetches and fast-forward pulls.
+- Fixed public remote retrieval through literal URLs and standard-service clients, and the boundary between remote reads and transmitted local data.
 - Review boundaries for remote, refspec, configuration, transport, submodule, merge, rebase, and chained variants.
 - Permit consumption, mutation, reuse, and lifecycle invalidation.
 - Unavailable startup warning and human review behavior.
